@@ -186,8 +186,47 @@ export default {
 	},
 	onLoad() {
 		uni.getSystemInfo({ success: (res) => { this.isPC = res.windowWidth >= 768 } })
+		this.loadReports()
 	},
 	methods: {
+		async loadReports() {
+			try {
+				const occupancy = await this.$api.get('/api/reports/occupancy')
+				const revenue = await this.$api.get('/api/reports/revenue')
+				const rooms = await this.$api.get('/api/rooms')
+				this.stats = {
+					totalRevenue: revenue.totalRevenue,
+					avgOccupancy: Number(occupancy.occupancyRate || 0),
+					totalGuests: occupancy.occupiedRooms,
+					avgRoomRate: occupancy.occupiedRooms ? (Number(revenue.roomRevenue || 0) / occupancy.occupiedRooms).toFixed(2) : 0
+				}
+				this.revenueData = [
+					{ label: '房费', value: Number(revenue.roomRevenue || 0) },
+					{ label: '服务', value: Number(revenue.serviceRevenue || 0) },
+					{ label: '已收', value: Number(revenue.paidAmount || 0) },
+					{ label: '未收', value: Number(revenue.unpaidAmount || 0) }
+				]
+				this.occupancyData = [
+					{ label: '空房', value: Number(occupancy.vacantRooms || 0) },
+					{ label: '入住', value: Number(occupancy.occupiedRooms || 0) },
+					{ label: '预订', value: Number(occupancy.reservedRooms || 0) },
+					{ label: '脏房', value: Number(occupancy.dirtyRooms || 0) }
+				]
+				const totalRooms = (rooms || []).length || 1
+				const grouped = {}
+				;(rooms || []).forEach(room => {
+					grouped[room.typeName] = (grouped[room.typeName] || 0) + 1
+				})
+				this.roomTypeRanking = Object.keys(grouped).map(type => ({
+					type,
+					count: grouped[type],
+					revenue: 0,
+					percent: Math.round(grouped[type] * 100 / totalRooms)
+				}))
+			} catch (error) {
+				console.error(error)
+			}
+		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
 			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }

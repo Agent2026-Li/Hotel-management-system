@@ -300,6 +300,7 @@ export default {
 			pageName: '退房结算',
 			isPC: true,
 			isSidebarCollapsed: false,
+			quickRoomNumber: '',
 			activeTab: 'checkout',
 			searchKeyword: '',
 			searchKeyword2: '',
@@ -338,14 +339,75 @@ export default {
 			]
 		}
 	},
-	onLoad() {
+	onLoad(options = {}) {
+		this.quickRoomNumber = options.roomNumber || ''
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
 			}
 		})
+		this.loadCheckoutData()
 	},
 	methods: {
+		async loadCheckoutData() {
+			try {
+				const rooms = await this.$api.get('/api/rooms', { status: 'occupied' })
+				const bills = await this.$api.get('/api/bills')
+				const unpaidBills = (bills || []).filter(bill => bill.status !== 'paid')
+				this.currentGuests = (rooms || []).map(room => {
+					const bill = unpaidBills.find(item => item.roomNumber === room.number) || {}
+					return {
+						room: room.number,
+						name: room.guest ? room.guest.name : bill.guestName,
+						roomType: room.typeName,
+						checkin: '',
+						checkout: '',
+						nights: 1,
+						roomFee: Number(bill.roomAmount || 0),
+						dining: 0,
+						minibar: Number(bill.serviceAmount || 0),
+						total: Number(bill.totalAmount || 0),
+						deposit: Number(bill.paidAmount || 0),
+						billId: bill.id
+					}
+				})
+				this.todayCheckouts = this.currentGuests.map(item => ({
+					room: item.room,
+					name: item.name,
+					checkoutTime: '待退房',
+					checkedOut: false,
+					...item
+				}))
+				this.checkoutHistory = (bills || [])
+					.filter(bill => bill.status === 'paid')
+					.map(bill => ({
+						time: '',
+						room: bill.roomNumber,
+						name: bill.guestName,
+						roomType: '',
+						nights: 1,
+						amount: bill.totalAmount,
+						payment: bill.statusName || '已结清'
+					}))
+				this.openQuickCheckout()
+			} catch (error) {
+				this.showToast(error.message || '退房数据加载失败')
+			}
+		},
+		openQuickCheckout() {
+			if (!this.quickRoomNumber) {
+				return
+			}
+			const selected = this.currentGuests.find(item => String(item.room) === String(this.quickRoomNumber))
+			if (!selected) {
+				this.showToast(`房间 ${this.quickRoomNumber} 当前不可退房`)
+				this.quickRoomNumber = ''
+				return
+			}
+			this.checkoutData = { ...selected }
+			this.showModal = true
+			this.quickRoomNumber = ''
+		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
 		},
@@ -385,6 +447,24 @@ export default {
 		confirmCheckout() {
 			this.showToast('退房办理成功！')
 			this.closeModal()
+		},
+		async confirmCheckout() {
+			if (!this.checkoutData.room) {
+				this.showToast('请选择退房房间')
+				return
+			}
+			try {
+				await this.$api.post('/api/checkout', {
+					roomNumber: this.checkoutData.room,
+					paymentMethod: this.selectedPayment,
+					paidAmount: this.checkoutData.total
+				})
+				this.showToast('退房办理成功')
+				this.closeModal()
+				await this.loadCheckoutData()
+			} catch (error) {
+				this.showToast(error.message || '退房办理失败')
+			}
 		},
 		showToast(message) {
 			this.toastMessage = message

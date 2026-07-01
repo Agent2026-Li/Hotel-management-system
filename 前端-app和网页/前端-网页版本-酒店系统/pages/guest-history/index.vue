@@ -109,8 +109,25 @@ export default {
 	},
 	onLoad() {
 		uni.getSystemInfo({ success: (res) => { this.isPC = res.windowWidth >= 768 } })
+		this.loadGuests()
 	},
 	methods: {
+		async loadGuests() {
+			try {
+				const guests = await this.$api.get('/api/guests', { keyword: this.searchKeyword })
+				this.guests = (guests || []).map(guest => ({
+					...guest,
+					gender: '',
+					idcard: guest.idCard,
+					stayCount: guest.totalOrders,
+					totalConsume: guest.totalAmount,
+					vipLevel: 'normal',
+					vipLevelName: guest.memberLevel || '普通会员'
+				}))
+			} catch (error) {
+				this.showToast(error.message || '客史加载失败')
+			}
+		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
 			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }

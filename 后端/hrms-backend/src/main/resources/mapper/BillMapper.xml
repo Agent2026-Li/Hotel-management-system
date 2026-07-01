@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hrms.mapper.BillMapper">
+    <!-- 查询账单列表，支持按状态和房间筛选 -->
+    <select id="selectBillList" resultType="com.hrms.entity.Bill">
+        select *
+        from bill
+        <where>
+            <if test="status != null and status != ''">
+                and status = #{status}
+            </if>
+            <if test="roomNumber != null and roomNumber != ''">
+                and room_number = #{roomNumber}
+            </if>
+        </where>
+        order by id
+    </select>
+</mapper>
+

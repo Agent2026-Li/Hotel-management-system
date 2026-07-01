@@ -198,6 +198,58 @@
 			</view>
 		</view>
 		
+		<!-- 换房弹窗 -->
+		<view class="modal-mask" v-if="showChangeModal" @tap="closeOperationModals">
+			<view class="modal-content small-modal" @tap.stop>
+				<view class="modal-header">
+					<text class="modal-title">办理换房</text>
+					<text class="modal-close" @tap="closeOperationModals">✕</text>
+				</view>
+				<view class="modal-body">
+					<view class="operation-row">
+						<text class="operation-label">原房间</text>
+						<text class="operation-value">{{ selectedRoom.number }} {{ selectedRoom.typeName }}</text>
+					</view>
+					<view class="operation-row">
+						<text class="operation-label">目标房间</text>
+						<picker :range="vacantRooms" range-key="label" @change="onChangeTargetRoom">
+							<view class="operation-input">{{ changeTargetLabel || '请选择空闲房' }}</view>
+						</picker>
+					</view>
+					<view class="modal-actions">
+						<button class="plain-btn" @tap="closeOperationModals">取消</button>
+						<button class="primary-btn" @tap="confirmChangeRoom">确认换房</button>
+					</view>
+				</view>
+			</view>
+		</view>
+
+		<!-- 续住弹窗 -->
+		<view class="modal-mask" v-if="showExtendModal" @tap="closeOperationModals">
+			<view class="modal-content small-modal" @tap.stop>
+				<view class="modal-header">
+					<text class="modal-title">办理续住</text>
+					<text class="modal-close" @tap="closeOperationModals">✕</text>
+				</view>
+				<view class="modal-body">
+					<view class="operation-row">
+						<text class="operation-label">房间</text>
+						<text class="operation-value">{{ selectedRoom.number }} {{ selectedRoom.typeName }}</text>
+					</view>
+					<view class="operation-row">
+						<text class="operation-label">新的预计退房日期</text>
+						<picker mode="date" :start="today" @change="onExtendDateChange">
+							<view class="operation-input">{{ extendCheckout || '请选择日期' }}</view>
+						</picker>
+					</view>
+					<view class="modal-actions">
+						<button class="plain-btn" @tap="closeOperationModals">取消</button>
+						<button class="primary-btn" @tap="confirmExtendStay">确认续住</button>
+					</view>
+				</view>
+			</view>
+		</view>
+
 		<!-- Toast -->
 		<view class="toast" :class="{ show: toastShow }">{{ toastMessage }}</view>
 	</view>
@@ -220,9 +272,16 @@ export default {
 			isSidebarCollapsed: false,
 			currentFloor: 1,
 			showModal: false,
+			showChangeModal: false,
+			showExtendModal: false,
 			toastShow: false,
 			toastMessage: '',
 			selectedRoom: {},
+			vacantRooms: [],
+			changeTargetRoom: '',
+			changeTargetLabel: '',
+			extendCheckout: '',
+			today: new Date().toISOString().split('T')[0],
 			legendItems: [
 				{ status: 'vacant', label: '空闲', style: 'background: #e6f4ff; border: 1px solid #91caff;' },
 				{ status: 'occupied', label: '已入住', style: 'background: #d6e4ff; border: 1px solid #69b1ff;' },
@@ -254,7 +313,7 @@ export default {
 		}
 	},
 	onLoad() {
-		this.generateRooms()
+		this.loadRooms()
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
@@ -262,7 +321,17 @@ export default {
 		})
 	},
 	methods: {
+		async loadRooms() {
+			try {
+				const rooms = await this.$api.get('/api/rooms')
+				this.allRooms = rooms || []
+			} catch (error) {
+				this.showToast(error.message || '房态加载失败，已使用本地演示数据')
+				this.generateRooms()
+			}
+		},
 		generateRooms() {
+			this.allRooms = []
 			const statuses = ['vacant', 'occupied', 'reserved', 'dirty', 'cleaning', 'maintenance']
 			for (let floor = 1; floor <= 7; floor++) {
 				for (let room = 1; room <= 14; room++) {
@@ -352,16 +421,143 @@ export default {
 				url: `/pages/${page}/index`
 			})
 		},
-		handleAction(action) {
-			const actions = {
-				'change': '换房',
-				'extend': '续住',
-				'charge': '加消费',
-				'clean': '清洁申请已提交',
-				'checkout': '退房'
+		async openChangeRoomModal() {
+			try {
+				const rooms = await this.$api.get('/api/rooms', { status: 'vacant' })
+				this.vacantRooms = (rooms || []).map(room => ({
+					...room,
+					label: `${room.number} - ${room.typeName} - ¥${room.price}/晚`
+				}))
+				if (this.vacantRooms.length === 0) {
+					this.showToast('当前没有可换的空闲房')
+					return
+				}
+				this.changeTargetRoom = ''
+				this.changeTargetLabel = ''
+				this.showModal = false
+				this.showChangeModal = true
+			} catch (error) {
+				this.showToast(error.message || '空闲房加载失败')
 			}
-			this.showToast(actions[action])
-			this.closeModal()
+		},
+		openExtendStayModal() {
+			this.extendCheckout = this.nextDate(1)
+			this.showModal = false
+			this.showExtendModal = true
+		},
+		onChangeTargetRoom(e) {
+			const selected = this.vacantRooms[e.detail.value]
+			if (!selected) {
+				return
+			}
+			this.changeTargetRoom = selected.number
+			this.changeTargetLabel = selected.label
+		},
+		onExtendDateChange(e) {
+			this.extendCheckout = e.detail.value
+		},
+		async confirmChangeRoom() {
+			if (!this.changeTargetRoom) {
+				this.showToast('请选择目标房间')
+				return
+			}
+			try {
+				await this.$api.post(`/api/rooms/${this.selectedRoom.number}/change-room`, {
+					targetRoomNumber: this.changeTargetRoom,
+					reason: 'quick-action'
+				})
+				this.closeOperationModals()
+				await this.loadRooms()
+				this.showToast(`已换至 ${this.changeTargetRoom} 房`)
+			} catch (error) {
+				this.showToast(error.message || '换房失败')
+			}
+		},
+		async confirmExtendStay() {
+			if (!this.extendCheckout) {
+				this.showToast('请选择续住日期')
+				return
+			}
+			try {
+				await this.$api.patch(`/api/rooms/${this.selectedRoom.number}/extend-stay`, {
+					checkout: this.extendCheckout,
+					reason: 'quick-action'
+				})
+				this.closeOperationModals()
+				await this.loadRooms()
+				this.showToast(`已续住至 ${this.extendCheckout}`)
+			} catch (error) {
+				this.showToast(error.message || '续住失败')
+			}
+		},
+		closeOperationModals() {
+			this.showChangeModal = false
+			this.showExtendModal = false
+		},
+		nextDate(days) {
+			const date = new Date()
+			date.setDate(date.getDate() + days)
+			return date.toISOString().split('T')[0]
+		},
+		async performRoomAction(action) {
+			const roomNumber = this.selectedRoom && this.selectedRoom.number
+			const roomStatus = this.selectedRoom && this.selectedRoom.status
+			if (!roomNumber) {
+				this.showToast('请先选择房间')
+				return
+			}
+			const encodedRoom = encodeURIComponent(roomNumber)
+			if (action === 'change') {
+				if (roomStatus !== 'occupied') {
+					this.showToast('只有在住房可以办理换房')
+					return
+				}
+				await this.openChangeRoomModal()
+				return
+			}
+			if (action === 'extend') {
+				if (roomStatus !== 'occupied') {
+					this.showToast('只有在住房可以办理续住')
+					return
+				}
+				this.openExtendStayModal()
+				return
+			}
+			if (action === 'charge') {
+				if (roomStatus !== 'occupied') {
+					this.showToast('只有在住房可以加消费')
+					return
+				}
+				this.closeModal()
+				uni.navigateTo({ url: `/pages/billing/index?action=charge&roomNumber=${encodedRoom}` })
+				return
+			}
+			if (action === 'clean') {
+				if (roomStatus === 'occupied') {
+					this.showToast('在住房不能直接清洁')
+					return
+				}
+				try {
+					await this.$api.patch(`/api/rooms/${roomNumber}/status`, { status: 'cleaning', reason: 'quick-action' })
+					await this.loadRooms()
+					this.closeModal()
+					this.showToast('已提交清洁任务')
+				} catch (error) {
+					this.showToast(error.message || '清洁提交失败')
+				}
+				return
+			}
+			if (action === 'checkout') {
+				if (roomStatus !== 'occupied') {
+					this.showToast('只有在住房可以退房')
+					return
+				}
+				this.closeModal()
+				uni.navigateTo({ url: `/pages/checkout/index?roomNumber=${encodedRoom}` })
+			}
+		},
+		async handleAction(action) {
+			await this.performRoomAction(action)
 		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
@@ -825,6 +1021,67 @@ export default {
 .action-btn.danger {
 	background: rgba(255, 77, 79, 0.1);
 	color: #ff4d4f;
+}
+
+.small-modal {
+	max-width: 420px;
+}
+
+.operation-row {
+	margin-bottom: 24rpx;
+}
+
+.operation-label {
+	display: block;
+	font-size: 24rpx;
+	color: #8c8c8c;
+	margin-bottom: 10rpx;
+}
+
+.operation-value {
+	font-size: 28rpx;
+	font-weight: 600;
+	color: #262626;
+}
+
+.operation-input {
+	height: 76rpx;
+	line-height: 76rpx;
+	border: 1px solid #d9d9d9;
+	border-radius: 8rpx;
+	padding: 0 20rpx;
+	font-size: 26rpx;
+	background: #fff;
+	color: #262626;
+}
+
+.modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 16rpx;
+	margin-top: 32rpx;
+}
+
+.plain-btn,
+.primary-btn {
+	margin: 0;
+	height: 72rpx;
+	line-height: 72rpx;
+	padding: 0 28rpx;
+	border-radius: 8rpx;
+	font-size: 26rpx;
+}
+
+.plain-btn {
+	background: #fff;
+	color: #595959;
+	border: 1px solid #d9d9d9;
+}
+
+.primary-btn {
+	background: #1677ff;
+	color: #fff;
+	border: 1px solid #1677ff;
 }
 
 /* Toast */

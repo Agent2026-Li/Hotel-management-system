@@ -272,6 +272,8 @@ export default {
 			pageName: '入住登记',
 			isPC: true,
 			isSidebarCollapsed: false,
+			quickAction: '',
+			quickRoomNumber: '',
 			activeTab: 'new',
 			searchKeyword: '',
 			startDate: '',
@@ -329,17 +331,48 @@ export default {
 			return (this.formData.nights || 1) * (this.formData.price || 0)
 		}
 	},
-	onLoad() {
+	onLoad(options = {}) {
+		this.quickAction = options.action || ''
+		this.quickRoomNumber = options.roomNumber || ''
 		const now = new Date()
 		this.startDate = now.toISOString().split('T')[0]
 		this.formData.checkin = this.startDate
+		this.roomTypeOptions = [
+			{ id: 'RT001', name: '标准单人间', price: 199 },
+			{ id: 'RT002', name: '标准双人间', price: 259 },
+			{ id: 'RT003', name: '豪华大床房', price: 399 },
+			{ id: 'RT004', name: '行政套房', price: 699 }
+		]
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
 			}
 		})
+		this.loadCheckinData()
+		this.handleQuickEntry()
 	},
 	methods: {
+		handleQuickEntry() {
+			if (this.quickAction !== 'changeRoom' || !this.quickRoomNumber) {
+				return
+			}
+			this.activeTab = 'new'
+			this.formData.remark = `房间 ${this.quickRoomNumber} 换房办理，请选择目标空房`
+			this.showToast(`房间 ${this.quickRoomNumber} 换房：请选择目标空房`)
+		},
+		async loadCheckinData() {
+			try {
+				const rooms = await this.$api.get('/api/rooms', { status: 'vacant' })
+				this.availableRooms = (rooms || []).map(room => ({
+					...room,
+					id: room.type,
+					number: String(room.number)
+				}))
+				this.pendingReservations = await this.$api.get('/api/reservations', { status: 'confirmed' })
+			} catch (error) {
+				this.showToast(error.message || '入住数据加载失败')
+			}
+		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
 		},
@@ -441,6 +474,52 @@ export default {
 			this.formData.checkout = item.checkout
 			this.activeTab = 'new'
 			this.showToast('已加载预订信息')
+		},
+		onRoomTypeChange(e) {
+			const selected = this.roomTypeOptions[e.detail.value]
+			this.formData.roomType = selected.id || selected.name
+			this.formData.roomTypeName = selected.name
+			this.formData.price = selected.price
+		},
+		onRoomChange(e) {
+			const selected = this.availableRooms[e.detail.value]
+			this.formData.roomNumber = selected.number
+			this.formData.roomId = selected.type || selected.id
+			this.formData.roomType = selected.type || selected.id
+			this.formData.roomTypeName = selected.typeName || this.formData.roomTypeName
+			this.formData.price = selected.price || this.formData.price
+		},
+		async submitCheckin() {
+			if (!this.formData.name || !this.formData.phone || !this.formData.roomNumber || !this.formData.checkout) {
+				this.showToast('请填写完整入住信息')
+				return
+			}
+			try {
+				await this.$api.post('/api/checkin', {
+					roomNumber: this.formData.roomNumber,
+					name: this.formData.name,
+					phone: this.formData.phone,
+					idCard: this.formData.idcard,
+					roomType: this.formData.roomType,
+					checkinDate: this.formData.checkin,
+					checkoutDate: this.formData.checkout,
+					remark: this.formData.remark
+				})
+				this.showToast('入住办理成功')
+				this.resetForm()
+				await this.loadCheckinData()
+			} catch (error) {
+				this.showToast(error.message || '入住办理失败')
+			}
+		},
+		async doReservedCheckin(item) {
+			try {
+				await this.$api.post('/api/checkin', { reservationId: item.id })
+				this.showToast('预订入住成功')
+				await this.loadCheckinData()
+			} catch (error) {
+				this.showToast(error.message || '预订入住失败')
+			}
 		},
 		showToast(message) {
 			this.toastMessage = message

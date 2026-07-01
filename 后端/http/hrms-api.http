@@ -1,0 +1,137 @@
+@baseUrl = http://localhost:8080
+@token =
+
+### 登录，复制 data.token 到上面的 token
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "123456"
+}
+
+### 测试账号
+GET {{baseUrl}}/api/auth/test-accounts
+
+### 房态列表
+GET {{baseUrl}}/api/rooms
+Authorization: Bearer {{token}}
+
+### 修改房态
+PATCH {{baseUrl}}/api/rooms/103/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "cleaning",
+  "reason": "开始清洁"
+}
+
+### 换房
+POST {{baseUrl}}/api/rooms/101/change-room
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "targetRoomNumber": "106",
+  "reason": "客人要求换房"
+}
+
+### 续住
+PATCH {{baseUrl}}/api/rooms/101/extend-stay
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "checkout": "2026-07-08",
+  "reason": "客人续住"
+}
+
+### 预订列表
+GET {{baseUrl}}/api/reservations
+Authorization: Bearer {{token}}
+
+### 新增预订
+POST {{baseUrl}}/api/reservations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "测试预订",
+  "phone": "13800001111",
+  "roomType": "RT002",
+  "checkin": "2026-07-06",
+  "checkout": "2026-07-08",
+  "remark": "联调测试"
+}
+
+### 预订入住
+POST {{baseUrl}}/api/checkin
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reservationId": "R20260701001"
+}
+
+### Walk-in 入住
+POST {{baseUrl}}/api/checkin
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "roomNumber": "106",
+  "name": "测试入住",
+  "phone": "13800009999",
+  "idCard": "370100200001010099",
+  "checkoutDate": "2026-07-03"
+}
+
+### 消费入账
+POST {{baseUrl}}/api/bills/B001/charges
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "itemName": "迷你吧",
+  "category": "MINIBAR",
+  "amount": 25.00,
+  "quantity": 1,
+  "remark": "饮料"
+}
+
+### 退房
+POST {{baseUrl}}/api/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "roomNumber": "101",
+  "paymentMethod": "cash"
+}
+
+### 清洁任务
+GET {{baseUrl}}/api/housekeeping/tasks
+Authorization: Bearer {{token}}
+
+### 清洁检查通过
+PATCH {{baseUrl}}/api/housekeeping/tasks/HK001
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "inspected",
+  "remark": "检查通过"
+}
+
+### 客史查询
+GET {{baseUrl}}/api/guests?keyword=张
+Authorization: Bearer {{token}}
+
+### 入住率报表
+GET {{baseUrl}}/api/reports/occupancy?date=2026-07-01
+Authorization: Bearer {{token}}
+
+### 营收报表
+GET {{baseUrl}}/api/reports/revenue?date=2026-07-01
+Authorization: Bearer {{token}}

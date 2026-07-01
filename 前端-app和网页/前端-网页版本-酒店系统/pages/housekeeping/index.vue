@@ -154,8 +154,31 @@ export default {
 	},
 	onLoad() {
 		uni.getSystemInfo({ success: (res) => { this.isPC = res.windowWidth >= 768 } })
+		this.loadTasks()
 	},
 	methods: {
+		async loadTasks() {
+			try {
+				const tasks = await this.$api.get('/api/housekeeping/tasks')
+				this.tasks = (tasks || []).map(task => {
+					const uiStatus = task.status === 'doing' ? 'cleaning' : task.status
+					return {
+						...task,
+						room: task.roomNumber,
+						roomType: '',
+						type: task.taskType,
+						time: task.createdAt || '',
+						staff: task.assignedTo,
+						status: uiStatus
+					}
+				})
+				this.pendingTasks = this.tasks.filter(task => task.status === 'pending').length
+				this.cleaningTasks = this.tasks.filter(task => task.status === 'cleaning').length
+				this.completedToday = this.tasks.filter(task => task.status === 'completed' || task.status === 'done').length
+			} catch (error) {
+				this.showToast(error.message || '清洁任务加载失败')
+			}
+		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
 			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
@@ -164,6 +187,24 @@ export default {
 		},
 		startClean(task) { task.status = 'cleaning'; task.statusName = '清洁中'; task.staff = '张阿姨'; this.showToast(`${task.room}开始清洁`) },
 		completeClean(task) { task.status = 'completed'; task.statusName = '已完成'; this.completedToday++; this.pendingTasks--; this.showToast(`${task.room}清洁完成`) },
+		async startClean(task) {
+			try {
+				await this.$api.patch(`/api/housekeeping/tasks/${task.id}`, { status: 'doing' })
+				this.showToast(`${task.room}开始清洁`)
+				await this.loadTasks()
+			} catch (error) {
+				this.showToast(error.message || '开始清洁失败')
+			}
+		},
+		async completeClean(task) {
+			try {
+				await this.$api.patch(`/api/housekeeping/tasks/${task.id}`, { status: 'completed' })
+				this.showToast(`${task.room}清洁完成`)
+				await this.loadTasks()
+			} catch (error) {
+				this.showToast(error.message || '清洁完成失败')
+			}
+		},
 		showToast(message) { this.toastMessage = message; this.toastShow = true; setTimeout(() => { this.toastShow = false }, 2000) }
 	}
 }

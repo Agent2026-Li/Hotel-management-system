@@ -194,6 +194,8 @@ export default {
 			pageName: '账单管理',
 			isPC: true,
 			isSidebarCollapsed: false,
+			quickRoomNumber: '',
+			quickAction: '',
 			searchKeyword: '',
 			showModal: false,
 			toastShow: false,
@@ -222,10 +224,65 @@ export default {
 			]
 		}
 	},
-	onLoad() {
+	onLoad(options = {}) {
+		this.quickRoomNumber = options.roomNumber || ''
+		this.quickAction = options.action || ''
 		uni.getSystemInfo({ success: (res) => { this.isPC = res.windowWidth >= 768 } })
+		this.loadBillingData()
 	},
 	methods: {
+		async loadBillingData() {
+			try {
+				const bills = await this.$api.get('/api/bills')
+				this.roomOptions = (bills || []).filter(bill => bill.status !== 'paid').map(bill => ({
+					billId: bill.id,
+					room: bill.roomNumber,
+					name: bill.guestName,
+					label: `${bill.roomNumber} - ${bill.guestName}`
+				}))
+				this.chargeList = (bills || []).map(bill => ({
+					id: bill.id,
+					room: bill.roomNumber,
+					name: bill.guestName,
+					type: '账单',
+					item: (bill.items && bill.items[0] && bill.items[0].itemName) || '房费',
+					amount: bill.totalAmount,
+					time: '',
+					paid: bill.status === 'paid',
+					billId: bill.id
+				}))
+				const total = (bills || []).reduce((sum, bill) => sum + Number(bill.totalAmount || 0), 0)
+				this.totalCharges = total.toFixed(2)
+				this.roomRevenue = (bills || []).reduce((sum, bill) => sum + Number(bill.roomAmount || 0), 0).toFixed(2)
+				this.minibarRevenue = (bills || []).reduce((sum, bill) => sum + Number(bill.serviceAmount || 0), 0).toFixed(2)
+				this.diningRevenue = '0.00'
+				this.otherRevenue = '0.00'
+				this.billCount = (bills || []).length
+				this.unpaidCount = (bills || []).filter(bill => bill.status !== 'paid').length
+				this.paidCount = (bills || []).filter(bill => bill.status === 'paid').length
+				this.openQuickCharge()
+			} catch (error) {
+				this.showToast(error.message || '账单加载失败')
+			}
+		},
+		openQuickCharge() {
+			if (this.quickAction !== 'charge' || !this.quickRoomNumber) {
+				return
+			}
+			const selected = this.roomOptions.find(item => String(item.room) === String(this.quickRoomNumber))
+			if (!selected) {
+				this.showToast(`房间 ${this.quickRoomNumber} 暂无未结账账单`)
+				this.quickAction = ''
+				return
+			}
+			this.chargeData = {
+				billId: selected.billId,
+				roomLabel: selected.label,
+				room: selected.room
+			}
+			this.showModal = true
+			this.quickAction = ''
+		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
 			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
@@ -239,6 +296,33 @@ export default {
 		saveCharge() { this.showToast('消费记录已添加'); this.closeModal() },
 		settleBill(item) { this.showToast('账单已结算') },
 		printBill(item) { this.showToast('正在打印...') },
+		onRoomChange(e) {
+			const selected = this.roomOptions[e.detail.value]
+			this.chargeData.roomLabel = selected.label
+			this.chargeData.billId = selected.billId
+		},
+		onTypeChange(e) { this.chargeData.type = this.chargeTypes[e.detail.value] },
+		async saveCharge() {
+			if (!this.chargeData.billId || !this.chargeData.item || !this.chargeData.amount) {
+				this.showToast('请填写完整消费信息')
+				return
+			}
+			try {
+				await this.$api.post(`/api/bills/${this.chargeData.billId}/charges`, {
+					itemName: this.chargeData.item,
+					category: this.chargeData.type || 'SERVICE',
+					amount: Number(this.chargeData.amount),
+					quantity: 1,
+					remark: this.chargeData.remark
+				})
+				this.showToast('消费记录已添加')
+				this.closeModal()
+				await this.loadBillingData()
+			} catch (error) {
+				this.showToast(error.message || '消费入账失败')
+			}
+		},
+		settleBill(item) { this.showToast(item.paid ? '账单已结清' : '请在退房结算页办理收款') },
 		showToast(message) { this.toastMessage = message; this.toastShow = true; setTimeout(() => { this.toastShow = false }, 2000) }
 	}
 }
