@@ -42,13 +42,13 @@
 					<view class="grid-2">
 						<view class="card">
 							<view class="card-header">
-								<view class="card-title">入住率趋势</view>
+								<view class="card-title">房态分布</view>
 							</view>
 							<view class="chart-container">
 								<view v-for="(item, index) in occupancyData" :key="index" class="chart-bar">
 									<view class="chart-value">{{ item.value }}%</view>
 									<view class="chart-bar-inner" :style="{ height: item.value * 2 + 'rpx' }"></view>
-									<view class="chart-label">{{ item.label }}</view>
+									<view class="chart-label">{{ item.label }} {{ item.count }}间</view>
 								</view>
 							</view>
 						</view>
@@ -69,12 +69,12 @@
 									</view>
 									<view class="revenue-item">
 										<text class="revenue-icon">🍽️</text>
-										<text class="revenue-text">餐饮收入</text>
+										<text class="revenue-text">服务收入</text>
 										<text class="revenue-amount">¥{{ todayRevenue.dining }}</text>
 									</view>
 									<view class="revenue-item">
 										<text class="revenue-icon">🥤</text>
-										<text class="revenue-text">迷你吧收入</text>
+										<text class="revenue-text">已收金额</text>
 										<text class="revenue-amount">¥{{ todayRevenue.minibar }}</text>
 									</view>
 								</view>
@@ -210,7 +210,7 @@
 						</view>
 						<view class="revenue-col">
 							<text class="revenue-icon">🍽️</text>
-							<text>餐饮 ¥{{ todayRevenue.dining }}</text>
+							<text>服务 ¥{{ todayRevenue.dining }}</text>
 						</view>
 					</view>
 				</view>
@@ -257,10 +257,10 @@ export default {
 				{ label: '6/28', value: 76 }
 			],
 			todayRevenue: {
-				total: '45,280',
-				room: '38,500',
-				dining: '4,280',
-				minibar: '2,500'
+				total: '0.00',
+				room: '0.00',
+				dining: '0.00',
+				minibar: '0.00'
 			},
 			todoList: [
 				{ icon: '🔑', title: '801房间入住', desc: 'VIP客人张三，豪华套房', time: '14:30' },
@@ -283,8 +283,93 @@ export default {
 				this.isPC = res.windowWidth >= 768
 			}
 		})
+		this.loadDashboard()
 	},
 	methods: {
+		async loadDashboard() {
+			try {
+				const [rooms, occupancy, revenue, bills, tasks] = await Promise.all([
+					this.$api.get('/api/rooms'),
+					this.$api.get('/api/reports/occupancy'),
+					this.$api.get('/api/reports/revenue'),
+					this.$api.get('/api/bills'),
+					this.$api.get('/api/housekeeping/tasks')
+				])
+				const roomList = Array.isArray(rooms) ? rooms : []
+				const report = this.normalizeOccupancy(occupancy, roomList)
+				this.stats = {
+					vacant: report.vacant,
+					occupied: report.occupied,
+					reserved: report.reserved,
+					dirty: report.dirty
+				}
+				this.todayRevenue = {
+					total: this.formatMoney(revenue && revenue.totalRevenue),
+					room: this.formatMoney(revenue && revenue.roomRevenue),
+					dining: this.formatMoney(revenue && revenue.serviceRevenue),
+					minibar: this.formatMoney(revenue && revenue.paidAmount)
+				}
+				this.occupancyData = [
+					this.toChartItem('空房', report.vacant, report.total),
+					this.toChartItem('入住', report.occupied, report.total),
+					this.toChartItem('预订', report.reserved, report.total),
+					this.toChartItem('脏房', report.dirty, report.total)
+				]
+				this.todoList = (tasks || []).slice(0, 4).map(task => ({
+					icon: '🧹',
+					title: `${task.roomNumber} ${task.taskType}`,
+					desc: task.remark || task.statusName,
+					time: task.createdAt || ''
+				}))
+				if (!this.todoList.length) {
+					this.todoList = (bills || []).slice(0, 4).map(bill => ({
+						icon: '💳',
+						title: `${bill.roomNumber} 账单`,
+						desc: `${bill.guestName} ¥${bill.totalAmount}`,
+						time: bill.statusName
+					}))
+				}
+				this.recentCheckins = roomList
+					.filter(room => room.status === 'occupied')
+					.slice(0, 6)
+					.map(room => ({
+						room: room.number,
+						name: room.guest ? room.guest.name : '',
+						type: room.typeName,
+						checkin: room.guest && room.guest.checkin ? room.guest.checkin : '-',
+						checkout: room.guest && room.guest.checkout ? room.guest.checkout : '-'
+					}))
+			} catch (error) {
+				this.showToast(error.message || '仪表盘加载失败')
+			}
+		},
+		normalizeOccupancy(occupancy, rooms) {
+			const total = this.toNumber(occupancy && (occupancy.total || occupancy.totalRooms)) || rooms.length || 0
+			return {
+				total,
+				vacant: this.toNumber(occupancy && (occupancy.vacant || occupancy.vacantRooms)) || this.countRoomsByStatus(rooms, 'vacant'),
+				occupied: this.toNumber(occupancy && (occupancy.occupied || occupancy.occupiedRooms)) || this.countRoomsByStatus(rooms, 'occupied'),
+				reserved: this.toNumber(occupancy && (occupancy.reserved || occupancy.reservedRooms)) || this.countRoomsByStatus(rooms, 'reserved'),
+				dirty: this.toNumber(occupancy && (occupancy.dirty || occupancy.dirtyRooms)) || this.countRoomsByStatus(rooms, 'dirty')
+			}
+		},
+		countRoomsByStatus(rooms, status) {
+			return (rooms || []).filter(room => room.status === status).length
+		},
+		toChartItem(label, count, total) {
+			const value = total ? Math.round(count * 100 / total) : 0
+			return { label, count, value }
+		},
+		toNumber(value) {
+			const number = Number(value)
+			return Number.isFinite(number) ? number : 0
+		},
+		formatMoney(value) {
+			return this.toNumber(value).toLocaleString('zh-CN', {
+				minimumFractionDigits: 2,
+				maximumFractionDigits: 2
+			})
+		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
 		},

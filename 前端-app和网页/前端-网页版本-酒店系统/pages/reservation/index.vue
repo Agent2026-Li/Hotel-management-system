@@ -201,6 +201,8 @@ export default {
 			pageName: '预订管理',
 			isPC: true,
 			isSidebarCollapsed: false,
+			quickAction: '',
+			quickRoomNumber: '',
 			searchKeyword: '',
 			checkinDate: '',
 			checkoutDate: '',
@@ -244,16 +246,41 @@ export default {
 			]
 		}
 	},
-	onLoad() {
+	onLoad(options = {}) {
+		this.quickAction = options.action || ''
+		this.quickRoomNumber = options.roomNumber || ''
 		const now = new Date()
 		this.startDate = now.toISOString().split('T')[0]
+		this.roomTypeOptions = [
+			{ id: 'RT001', name: '标准单人间', price: 199 },
+			{ id: 'RT002', name: '标准双人间', price: 259 },
+			{ id: 'RT003', name: '豪华大床房', price: 399 },
+			{ id: 'RT004', name: '行政套房', price: 699 }
+		]
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
 			}
 		})
+		this.loadReservations()
+		this.handleQuickEntry()
 	},
 	methods: {
+		handleQuickEntry() {
+			if (this.quickAction !== 'extendStay' || !this.quickRoomNumber) {
+				return
+			}
+			this.showAddModal()
+			this.formData.remark = `房间 ${this.quickRoomNumber} 续住登记`
+			this.showToast(`房间 ${this.quickRoomNumber} 续住：请补充客人和日期`)
+		},
+		async loadReservations() {
+			try {
+				this.reservations = await this.$api.get('/api/reservations')
+			} catch (error) {
+				this.showToast(error.message || '预订加载失败')
+			}
+		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
 		},
@@ -285,10 +312,11 @@ export default {
 		},
 		onStatusChange(e) {
 			this.selectedStatus = this.statusOptions[e.detail.value]
+			this.loadReservations()
 		},
 		onRoomTypeChange(e) {
 			const selected = this.roomTypeOptions[e.detail.value]
-			this.formData.roomType = selected.name
+			this.formData.roomType = selected.id || selected.name
 			this.formData.roomTypeName = selected.name
 		},
 		onFormDateChange(e) {
@@ -345,6 +373,58 @@ export default {
 			}
 			this.showToast(this.isEdit ? '预订已更新' : '预订创建成功')
 			this.closeModal()
+		},
+		async checkinReservation(item) {
+			try {
+				await this.$api.post('/api/checkin', { reservationId: item.id })
+				this.showToast('预订入住成功')
+				await this.loadReservations()
+			} catch (error) {
+				this.showToast(error.message || '预订入住失败')
+			}
+		},
+		cancelReservation(item) {
+			uni.showModal({
+				title: '提示',
+				content: '确定要取消该预订吗？',
+				success: async (res) => {
+					if (res.confirm) {
+						try {
+							await this.$api.post(`/api/reservations/${item.id}/cancel`)
+							this.showToast('预订已取消')
+							await this.loadReservations()
+						} catch (error) {
+							this.showToast(error.message || '取消失败')
+						}
+					}
+				}
+			})
+		},
+		async saveReservation() {
+			if (!this.formData.name || !this.formData.phone || !this.formData.roomType || !this.formData.checkin || !this.formData.checkout) {
+				this.showToast('请填写完整预订信息')
+				return
+			}
+			if (this.isEdit) {
+				this.showToast('当前后端暂不支持编辑预订')
+				this.closeModal()
+				return
+			}
+			try {
+				await this.$api.post('/api/reservations', {
+					name: this.formData.name,
+					phone: this.formData.phone,
+					roomType: this.formData.roomType,
+					checkin: this.formData.checkin,
+					checkout: this.formData.checkout,
+					remark: this.formData.remark
+				})
+				this.showToast('预订创建成功')
+				this.closeModal()
+				await this.loadReservations()
+			} catch (error) {
+				this.showToast(error.message || '预订创建失败')
+			}
 		},
 		showToast(message) {
 			this.toastMessage = message

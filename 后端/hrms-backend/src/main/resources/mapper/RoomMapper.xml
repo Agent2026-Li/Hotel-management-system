@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hrms.mapper.RoomMapper">
+    <resultMap id="RoomResponseMap" type="com.hrms.dto.response.RoomResponse">
+        <id property="number" column="number"/>
+        <result property="floor" column="floor"/>
+        <result property="type" column="type"/>
+        <result property="typeName" column="type_name"/>
+        <result property="price" column="price"/>
+        <result property="status" column="frontend_status"/>
+        <result property="statusName" column="status_name"/>
+        <association property="guest" javaType="com.hrms.dto.response.GuestBrief">
+            <result property="name" column="guest_name"/>
+            <result property="phone" column="guest_phone"/>
+            <result property="checkin" column="guest_checkin"/>
+            <result property="checkout" column="guest_checkout"/>
+        </association>
+    </resultMap>
+
+    <!-- 查询房间列表，关联房型和当前住客信息 -->
+    <select id="selectRoomList" resultMap="RoomResponseMap">
+        select r.room_number as number,
+               r.floor,
+               r.type_id as type,
+               rt.name as type_name,
+               rt.price,
+               case r.status
+                   when 'VC' then 'vacant'
+                   when 'OC' then 'occupied'
+                   when 'RS' then 'reserved'
+                   when 'VD' then 'dirty'
+                   when 'CLEANING' then 'cleaning'
+                   when 'OOO' then 'maintenance'
+                   else 'vacant'
+               end as frontend_status,
+               case r.status
+                   when 'VC' then '空净房'
+                   when 'OC' then '入住'
+                   when 'RS' then '预订'
+                   when 'VD' then '脏房'
+                   when 'CLEANING' then '清洁中'
+                   when 'OOO' then '维修'
+                   else '未知'
+               end as status_name,
+               g.name as guest_name,
+               g.phone as guest_phone,
+               g.checkin as guest_checkin,
+               g.checkout as guest_checkout
+        from room r
+        join room_type rt on r.type_id = rt.id
+        left join guest g on r.room_number = g.room_number and r.status = 'OC'
+        <where>
+            <if test="status != null and status != ''">
+                and r.status = #{status}
+            </if>
+            <if test="floor != null">
+                and r.floor = #{floor}
+            </if>
+        </where>
+        order by r.room_number
+    </select>
+
+    <!-- 根据房号查询房间响应对象，关联房型和当前住客信息 -->
+    <select id="selectRoomResponseByNumber" resultMap="RoomResponseMap">
+        select r.room_number as number,
+               r.floor,
+               r.type_id as type,
+               rt.name as type_name,
+               rt.price,
+               case r.status
+                   when 'VC' then 'vacant'
+                   when 'OC' then 'occupied'
+                   when 'RS' then 'reserved'
+                   when 'VD' then 'dirty'
+                   when 'CLEANING' then 'cleaning'
+                   when 'OOO' then 'maintenance'
+                   else 'vacant'
+               end as frontend_status,
+               case r.status
+                   when 'VC' then '空净房'
+                   when 'OC' then '入住'
+                   when 'RS' then '预订'
+                   when 'VD' then '脏房'
+                   when 'CLEANING' then '清洁中'
+                   when 'OOO' then '维修'
+                   else '未知'
+               end as status_name,
+               g.name as guest_name,
+               g.phone as guest_phone,
+               g.checkin as guest_checkin,
+               g.checkout as guest_checkout
+        from room r
+        join room_type rt on r.type_id = rt.id
+        left join guest g on r.room_number = g.room_number and r.status = 'OC'
+        where r.room_number = #{roomNumber}
+    </select>
+</mapper>
+
