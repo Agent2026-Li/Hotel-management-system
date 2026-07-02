@@ -2,19 +2,18 @@
 
 ## 架构
 
-单体 Spring Boot 工程：`com.hrms`。模块按 `common/system/room/reservation/checkin/billing/housekeeping/guest/report` 拆分。
+单体 Spring Boot 工程：`com.hrms`。当前实现按 `common/config/controller/service/mapper/entity/dto/utils` 分层组织，业务能力覆盖认证、房态、预订、入住、退房、账单、清洁、客史和报表。
 
 ## 模块职责
 
-- `common`: 统一响应、异常处理、Token、RBAC、状态映射、演示数据仓库。
-- `system`: 登录、测试账号。
-- `room`: 房间、房型、房态查询和变更、WebSocket 推送。
-- `reservation`: 预订创建、取消、预订状态维护。
-- `checkin`: 预订入住、Walk-in 入住、退房。
-- `billing`: 账单查询、消费入账、金额计算。
-- `housekeeping`: 清洁任务、检查通过、房态释放。
-- `guest`: 客史查询。
-- `report`: 入住率和营收报表。
+- `common`: 统一响应、异常处理、鉴权拦截、角色校验和业务异常。
+- `config`: Web MVC 拦截器和 WebSocket 配置。
+- `controller`: 对外提供登录、房态、预订、入住、退房、账单、清洁、客史和报表接口。
+- `service` / `service.impl`: 编排业务流程、校验状态流转、计算金额。
+- `mapper`: 通过 MyBatis 访问 MySQL，简单 SQL 使用注解，复杂 SQL 使用 XML。
+- `entity`: 映射房间、预订、入住记录、账单、清洁任务等核心表。
+- `dto.request` / `dto.response`: 隔离接口入参、出参和数据库实体。
+- `utils`: Token、房态映射、金额、ID 生成和 WebSocket 房态推送。
 
 ## 关键流程
 
