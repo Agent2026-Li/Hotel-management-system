@@ -13,6 +13,7 @@ public interface ReservationService {
 
     ReservationResponse create(ReservationRequest request);
 
+    ReservationResponse update(String id, ReservationRequest request);
+
     ReservationResponse cancel(String id);
 }
-

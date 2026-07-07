@@ -144,9 +144,8 @@ export default {
 	methods: {
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		showSection(section) {
 			const sectionNames = { room: '房间设置', price: '价格设置', staff: '员工管理', system: '系统设置' }

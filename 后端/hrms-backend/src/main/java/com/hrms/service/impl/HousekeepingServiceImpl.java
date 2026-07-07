@@ -1,6 +1,7 @@
 package com.hrms.service.impl;
 
 import com.hrms.common.BusinessException;
+import com.hrms.common.CurrentUser;
 import com.hrms.dto.request.HousekeepingUpdateRequest;
 import com.hrms.dto.response.HousekeepingTaskResponse;
 import com.hrms.entity.HousekeepingTask;
@@ -31,8 +32,8 @@ public class HousekeepingServiceImpl implements HousekeepingService {
     }
 
     @Override
-    public List<HousekeepingTaskResponse> list(String status, String roomNumber) {
-        return taskMapper.selectTaskList(status, roomNumber).stream()
+    public List<HousekeepingTaskResponse> list(String status, String roomNumber, String assignedTo) {
+        return taskMapper.selectTaskList(status, roomNumber, assignedTo).stream()
                 .map(this::toResponse)
                 .toList();
     }
@@ -55,14 +56,26 @@ public class HousekeepingServiceImpl implements HousekeepingService {
 
     @Override
     @Transactional
-    public HousekeepingTaskResponse update(String id, HousekeepingUpdateRequest request) {
+    public HousekeepingTaskResponse update(String id, HousekeepingUpdateRequest request, CurrentUser currentUser) {
         HousekeepingTask task = taskMapper.getById(id);
         if (task == null) {
             throw new BusinessException(404, "清洁任务不存在");
         }
+        if ("HOUSEKEEPING".equals(currentUser.role()) && !currentUser.username().equals(task.assignedTo)) {
+            throw new BusinessException(403, "只能处理分配给自己的清洁任务");
+        }
         String status = request.status.trim().toLowerCase();
+        String assignedTo = task.assignedTo;
+        if (request.assignedTo != null && !request.assignedTo.isBlank()) {
+            if (!"ADMIN".equals(currentUser.role()) && !"MANAGER".equals(currentUser.role())) {
+                throw new BusinessException(403, "当前账号无权限分配清洁任务");
+            }
+            assignedTo = request.assignedTo.trim();
+        }
         LocalDateTime completedAt = task.completedAt;
         switch (status) {
+            case "pending" -> {
+            }
             case "doing" -> roomMapper.updateStatus(task.roomNumber, "CLEANING");
             case "completed" -> completedAt = LocalDateTime.now();
             case "inspected", "done" -> {
@@ -73,7 +86,7 @@ public class HousekeepingServiceImpl implements HousekeepingService {
             default -> throw new BusinessException(400, "不支持的清洁任务状态: " + request.status);
         }
         String remark = request.remark == null ? task.remark : request.remark;
-        taskMapper.updateStatus(id, status, completedAt, remark);
+        taskMapper.updateStatus(id, status, assignedTo, completedAt, remark);
         return toResponse(taskMapper.getById(id));
     }
 

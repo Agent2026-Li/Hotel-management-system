@@ -34,6 +34,7 @@ public class BillingController {
      */
     @Operation(summary = "查询账单列表")
     @GetMapping
+    @RoleRequired({"ADMIN", "FINANCE"})
     public ApiResponse<List<BillResponse>> list(@RequestParam(required = false) String status,
                                                 @RequestParam(required = false) String roomNumber) {
         return ApiResponse.success(billingService.list(status, roomNumber));
@@ -44,6 +45,7 @@ public class BillingController {
      */
     @Operation(summary = "查询账单详情")
     @GetMapping("/{id}")
+    @RoleRequired({"ADMIN", "FINANCE"})
     public ApiResponse<BillResponse> get(@PathVariable String id) {
         return ApiResponse.success(billingService.get(id));
     }
@@ -53,9 +55,8 @@ public class BillingController {
      */
     @Operation(summary = "消费入账")
     @PostMapping("/{id}/charges")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK", "FINANCE"})
+    @RoleRequired({"ADMIN", "FINANCE"})
     public ApiResponse<BillResponse> charge(@PathVariable String id, @Valid @RequestBody ChargeRequest request) {
         return ApiResponse.success(billingService.charge(id, request));
     }
 }
-

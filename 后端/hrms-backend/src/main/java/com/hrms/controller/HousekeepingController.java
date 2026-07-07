@@ -1,12 +1,15 @@
 package com.hrms.controller;
 
 import com.hrms.common.ApiResponse;
+import com.hrms.common.AuthInterceptor;
+import com.hrms.common.CurrentUser;
 import com.hrms.common.RoleRequired;
 import com.hrms.dto.request.HousekeepingUpdateRequest;
 import com.hrms.dto.response.HousekeepingTaskResponse;
 import com.hrms.service.HousekeepingService;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,9 +37,13 @@ public class HousekeepingController {
      */
     @Operation(summary = "查询清洁任务列表")
     @GetMapping
+    @RoleRequired({"ADMIN", "MANAGER", "HOUSEKEEPING"})
     public ApiResponse<List<HousekeepingTaskResponse>> list(@RequestParam(required = false) String status,
-                                                            @RequestParam(required = false) String roomNumber) {
-        return ApiResponse.success(housekeepingService.list(status, roomNumber));
+                                                            @RequestParam(required = false) String roomNumber,
+                                                            HttpServletRequest httpRequest) {
+        CurrentUser currentUser = (CurrentUser) httpRequest.getAttribute(AuthInterceptor.CURRENT_USER_ATTRIBUTE);
+        String assignedTo = "HOUSEKEEPING".equals(currentUser.role()) ? currentUser.username() : null;
+        return ApiResponse.success(housekeepingService.list(status, roomNumber, assignedTo));
     }
 
     /**
@@ -45,8 +52,10 @@ public class HousekeepingController {
     @Operation(summary = "更新清洁任务状态")
     @PatchMapping("/{id}")
     @RoleRequired({"ADMIN", "MANAGER", "HOUSEKEEPING"})
-    public ApiResponse<HousekeepingTaskResponse> update(@PathVariable String id, @Valid @RequestBody HousekeepingUpdateRequest request) {
-        return ApiResponse.success(housekeepingService.update(id, request));
+    public ApiResponse<HousekeepingTaskResponse> update(@PathVariable String id,
+                                                        @Valid @RequestBody HousekeepingUpdateRequest request,
+                                                        HttpServletRequest httpRequest) {
+        CurrentUser currentUser = (CurrentUser) httpRequest.getAttribute(AuthInterceptor.CURRENT_USER_ATTRIBUTE);
+        return ApiResponse.success(housekeepingService.update(id, request, currentUser));
     }
 }
-

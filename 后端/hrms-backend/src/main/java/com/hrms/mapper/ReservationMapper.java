@@ -26,6 +26,22 @@ public interface ReservationMapper {
             """)
     int insert(Reservation reservation);
 
+    /** 更新预订资料。 */
+    @Update("""
+            update reservation
+            set name = #{name},
+                phone = #{phone},
+                room_type = #{roomType},
+                room_number = #{roomNumber},
+                checkin = #{checkin},
+                checkout = #{checkout},
+                nights = #{nights},
+                amount = #{amount},
+                remark = #{remark}
+            where id = #{id}
+            """)
+    int update(Reservation reservation);
+
     /** 修改预订状态。 */
     @Update("update reservation set status = #{status} where id = #{id}")
     int updateStatus(@Param("id") String id, @Param("status") String status);
@@ -33,4 +49,3 @@ public interface ReservationMapper {
     /** 查询预订列表。 */
     List<ReservationResponse> selectReservationList(@Param("status") String status);
 }
-

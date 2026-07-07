@@ -31,6 +31,7 @@
 | PATCH | `/api/rooms/{number}/extend-stay` | 续住 |
 | GET | `/api/reservations` | 预订列表 |
 | POST | `/api/reservations` | 新增预订 |
+| PATCH | `/api/reservations/{id}` | 编辑预订 |
 | POST | `/api/reservations/{id}/cancel` | 取消预订 |
 | POST | `/api/checkin` | 预订入住或 Walk-in 入住 |
 | POST | `/api/checkout` | 退房结算 |
@@ -72,6 +73,19 @@
   "roomType": "RT002",
   "checkin": "2026-07-06",
   "checkout": "2026-07-08"
+}
+```
+
+编辑预订请求与新增预订一致，可修改客人姓名、手机号、房型、入住日期、退房日期和备注：
+
+```json
+{
+  "name": "测试预订",
+  "phone": "13800001111",
+  "roomType": "RT003",
+  "checkin": "2026-07-07",
+  "checkout": "2026-07-09",
+  "remark": "修改预订"
 }
 ```
 

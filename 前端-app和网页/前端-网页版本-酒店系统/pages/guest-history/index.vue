@@ -7,7 +7,7 @@
 				<view class="page-container">
 					<view class="search-bar">
 						<input type="text" placeholder="搜索姓名/手机号/身份证" v-model="searchKeyword" />
-						<button class="btn btn-primary btn-sm" @tap="showAddModal">+ 添加客户</button>
+						<button v-if="can('guest:create')" class="btn btn-primary btn-sm" @tap="showAddModal">+ 添加客户</button>
 					</view>
 					
 					<view class="card">
@@ -39,8 +39,8 @@
 										<td>¥{{ guest.totalConsume }}</td>
 										<td><span class="vip-badge" :class="'vip-' + guest.vipLevel">{{ guest.vipLevelName }}</span></td>
 										<td>
-											<text class="action-link" @tap="viewDetail(guest)">详情</text>
-											<text class="action-link" @tap="editGuest(guest)">编辑</text>
+											<text v-if="can('guest:view')" class="action-link" @tap="viewDetail(guest)">详情</text>
+											<text v-if="can('guest:update_basic')" class="action-link" @tap="editGuest(guest)">编辑</text>
 										</td>
 									</tr>
 								</tbody>
@@ -130,13 +130,30 @@ export default {
 		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
-		showAddModal() { this.showToast('添加客户功能') },
-		viewDetail(guest) { this.showToast(`查看 ${guest.name} 详情`) },
-		editGuest(guest) { this.showToast(`编辑 ${guest.name}`) },
+		showAddModal() {
+			if (!this.can('guest:create')) {
+				this.showNoPermission()
+				return
+			}
+			this.showToast('添加客户功能')
+		},
+		viewDetail(guest) {
+			if (!this.can('guest:view')) {
+				this.showNoPermission()
+				return
+			}
+			this.showToast(`查看 ${guest.name} 详情`)
+		},
+		editGuest(guest) {
+			if (!this.can('guest:update_basic')) {
+				this.showNoPermission()
+				return
+			}
+			this.showToast(`编辑 ${guest.name}`)
+		},
 		showToast(message) { this.toastMessage = message; this.toastShow = true; setTimeout(() => { this.toastShow = false }, 2000) }
 	}
 }

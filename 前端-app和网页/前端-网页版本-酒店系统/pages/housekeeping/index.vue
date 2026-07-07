@@ -59,8 +59,9 @@
 									<text>👩 {{ task.staff }}</text>
 								</view>
 								<view class="task-actions">
-									<button class="btn btn-sm btn-primary" v-if="task.status === 'pending'" @tap="startClean(task)">开始</button>
-									<button class="btn btn-sm btn-default" v-if="task.status === 'cleaning'" @tap="completeClean(task)">完成</button>
+									<button class="btn btn-sm btn-default" v-if="task.status === 'pending' && can('housekeeping:assign')" @tap="assignTask(task)">分配</button>
+									<button class="btn btn-sm btn-primary" v-if="task.status === 'pending' && can('housekeeping:update')" @tap="startClean(task)">开始</button>
+									<button class="btn btn-sm btn-default" v-if="task.status === 'cleaning' && can('housekeeping:update')" @tap="completeClean(task)">完成</button>
 									<span class="status-badge" :class="'status-' + task.status">{{ task.statusName }}</span>
 								</view>
 							</view>
@@ -105,8 +106,9 @@
 							<text class="task-time">{{ task.time }}</text>
 						</view>
 						<view class="task-card-footer">
-							<button class="btn btn-sm btn-primary full" v-if="task.status === 'pending'" @tap="startClean(task)">开始清洁</button>
-							<button class="btn btn-sm btn-default full" v-if="task.status === 'cleaning'" @tap="completeClean(task)">标记完成</button>
+							<button class="btn btn-sm btn-default full" v-if="task.status === 'pending' && can('housekeeping:assign')" @tap="assignTask(task)">分配清洁员</button>
+							<button class="btn btn-sm btn-primary full" v-if="task.status === 'pending' && can('housekeeping:update')" @tap="startClean(task)">开始清洁</button>
+							<button class="btn btn-sm btn-default full" v-if="task.status === 'cleaning' && can('housekeeping:update')" @tap="completeClean(task)">标记完成</button>
 						</view>
 					</view>
 				</view>
@@ -181,13 +183,37 @@ export default {
 		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		startClean(task) { task.status = 'cleaning'; task.statusName = '清洁中'; task.staff = '张阿姨'; this.showToast(`${task.room}开始清洁`) },
 		completeClean(task) { task.status = 'completed'; task.statusName = '已完成'; this.completedToday++; this.pendingTasks--; this.showToast(`${task.room}清洁完成`) },
+		async assignTask(task) {
+			if (!this.can('housekeeping:assign')) {
+				this.showNoPermission()
+				return
+			}
+			if (!task.id) {
+				this.showToast(`${task.room} 已分配给 housekeeper`)
+				return
+			}
+			try {
+				await this.$api.patch(`/api/housekeeping/tasks/${task.id}`, {
+					status: task.status === 'cleaning' ? 'doing' : task.status,
+					assignedTo: 'housekeeper',
+					remark: task.remark
+				})
+				this.showToast(`${task.room} 已分配给 housekeeper`)
+				await this.loadTasks()
+			} catch (error) {
+				this.showToast(error.message || '任务分配失败')
+			}
+		},
 		async startClean(task) {
+			if (!this.can('housekeeping:update')) {
+				this.showNoPermission()
+				return
+			}
 			try {
 				await this.$api.patch(`/api/housekeeping/tasks/${task.id}`, { status: 'doing' })
 				this.showToast(`${task.room}开始清洁`)
@@ -197,6 +223,10 @@ export default {
 			}
 		},
 		async completeClean(task) {
+			if (!this.can('housekeeping:update')) {
+				this.showNoPermission()
+				return
+			}
 			try {
 				await this.$api.patch(`/api/housekeeping/tasks/${task.id}`, { status: 'completed' })
 				this.showToast(`${task.room}清洁完成`)

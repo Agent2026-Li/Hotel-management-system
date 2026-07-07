@@ -44,6 +44,7 @@ Base URL：`http://localhost:8080`
 
 - `GET /api/reservations?status=confirmed`
 - `POST /api/reservations`
+- `PATCH /api/reservations/{id}`
 - `POST /api/reservations/{id}/cancel`
 
 ## 入住退房

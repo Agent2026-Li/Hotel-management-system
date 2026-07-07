@@ -8,5 +8,6 @@ import jakarta.validation.constraints.NotBlank;
 public class HousekeepingUpdateRequest {
     @NotBlank
     public String status;
+    public String assignedTo;
     public String remark;
 }

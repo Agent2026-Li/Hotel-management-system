@@ -1,6 +1,7 @@
 package com.hrms.controller;
 
 import com.hrms.common.ApiResponse;
+import com.hrms.common.RoleRequired;
 import com.hrms.dto.response.OccupancyReport;
 import com.hrms.dto.response.RevenueReport;
 import com.hrms.service.ReportService;
@@ -30,6 +31,7 @@ public class ReportController {
      */
     @Operation(summary = "查询入住率报表")
     @GetMapping("/occupancy")
+    @RoleRequired({"ADMIN", "MANAGER", "FINANCE"})
     public ApiResponse<OccupancyReport> occupancy(@RequestParam(required = false)
                                                   @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ApiResponse.success(reportService.occupancy(date));
@@ -40,6 +42,7 @@ public class ReportController {
      */
     @Operation(summary = "查询营收报表")
     @GetMapping("/revenue")
+    @RoleRequired({"ADMIN", "MANAGER", "FINANCE"})
     public ApiResponse<RevenueReport> revenue(@RequestParam(required = false)
                                               @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         return ApiResponse.success(reportService.revenue(date));

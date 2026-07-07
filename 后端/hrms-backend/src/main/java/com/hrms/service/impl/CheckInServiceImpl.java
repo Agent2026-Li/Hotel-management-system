@@ -170,7 +170,7 @@ public class CheckInServiceImpl implements CheckInService {
             throw new BusinessException(404, "预订不存在");
         }
         if (!"confirmed".equals(reservation.status)) {
-            throw new BusinessException(400, "预订状态不能办理入住");
+            throw new BusinessException(400, "只有待入住的预约才能办理入住");
         }
         return reservation;
     }

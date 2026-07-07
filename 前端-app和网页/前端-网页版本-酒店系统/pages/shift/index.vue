@@ -60,7 +60,7 @@
 								</view>
 							</view>
 							<view class="action-area">
-								<button class="btn btn-primary full" @tap="showHandoverModal">交接班</button>
+								<button v-if="can('shift:create')" class="btn btn-primary full" @tap="showHandoverModal">交接班</button>
 							</view>
 						</view>
 					</view>
@@ -100,7 +100,7 @@
 					</view>
 				</view>
 				
-				<button class="btn btn-primary full" @tap="showHandoverModal">交接班</button>
+				<button v-if="can('shift:create')" class="btn btn-primary full" @tap="showHandoverModal">交接班</button>
 			</view>
 		</view>
 		
@@ -147,7 +147,7 @@
 				</view>
 				<view class="modal-footer">
 					<button class="btn btn-default" @tap="closeModal">取消</button>
-					<button class="btn btn-primary" @tap="confirmHandover">确认交接</button>
+					<button v-if="can('shift:create')" class="btn btn-primary" @tap="confirmHandover">确认交接</button>
 				</view>
 			</view>
 		</view>
@@ -192,13 +192,25 @@ export default {
 	methods: {
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
-		showHandoverModal() { this.showModal = true },
+		showHandoverModal() {
+			if (!this.can('shift:create')) {
+				this.showNoPermission()
+				return
+			}
+			this.showModal = true
+		},
 		closeModal() { this.showModal = false },
-		confirmHandover() { this.showToast('交接班完成'); this.closeModal() },
+		confirmHandover() {
+			if (!this.can('shift:create')) {
+				this.showNoPermission()
+				return
+			}
+			this.showToast('交接班完成')
+			this.closeModal()
+		},
 		showToast(message) { this.toastMessage = message; this.toastShow = true; setTimeout(() => { this.toastShow = false }, 2000) }
 	}
 }

@@ -65,6 +65,20 @@ Content-Type: application/json
   "remark": "联调测试"
 }
 
+### 编辑预订
+PATCH {{baseUrl}}/api/reservations/R20260701001
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "测试预订-已修改",
+  "phone": "13800001111",
+  "roomType": "RT003",
+  "checkin": "2026-07-07",
+  "checkout": "2026-07-09",
+  "remark": "编辑联调测试"
+}
+
 ### 预订入住
 POST {{baseUrl}}/api/checkin
 Authorization: Bearer {{token}}

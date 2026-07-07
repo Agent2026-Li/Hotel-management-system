@@ -2,6 +2,7 @@ package com.hrms.dto.response;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 /**
  * 预订接口响应对象，字段兼容前端预订列表。
@@ -18,6 +19,6 @@ public class ReservationResponse {
     public BigDecimal amount;
     public String status;
     public String statusName;
+    public LocalDateTime checkInTime;
     public String remark;
 }
-

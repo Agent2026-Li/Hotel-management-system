@@ -15,7 +15,7 @@
 					<view class="tab-content" v-if="activeTab === 'checkout'">
 						<view class="search-bar">
 							<input type="text" placeholder="搜索房号/客人姓名" v-model="searchKeyword" />
-							<button class="btn btn-primary btn-sm" @tap="showCheckoutModal">+ 办理退房</button>
+							<button v-if="can('checkout:handle')" class="btn btn-primary btn-sm" @tap="showCheckoutModal">+ 办理退房</button>
 						</view>
 						
 						<!-- 在住客人列表 -->
@@ -47,7 +47,7 @@
 											<td>{{ item.nights }}晚</td>
 											<td>¥{{ item.total }}</td>
 											<td>
-												<button class="btn btn-primary btn-sm" @tap="doCheckout(item)">退房</button>
+												<button v-if="can('checkout:handle')" class="btn btn-primary btn-sm" @tap="doCheckout(item)">退房</button>
 											</td>
 										</tr>
 									</tbody>
@@ -68,7 +68,7 @@
 										<text>{{ item.name }}</text>
 										<text class="checkout-time">{{ item.checkoutTime }}</text>
 									</view>
-									<button class="btn btn-sm" :class="item.checkedOut ? 'btn-default' : 'btn-primary'" 
+									<button v-if="can('checkout:handle')" class="btn btn-sm" :class="item.checkedOut ? 'btn-default' : 'btn-primary'" 
 										:disabled="item.checkedOut" @tap="doCheckout(item)">
 										{{ item.checkedOut ? '已退房' : '退房' }}
 									</button>
@@ -160,7 +160,7 @@
 									<text class="amount-label">消费合计</text>
 									<text class="amount-value">¥{{ item.total }}</text>
 								</view>
-								<button class="btn btn-primary" @tap="doCheckout(item)">办理退房</button>
+								<button v-if="can('checkout:handle')" class="btn btn-primary" @tap="doCheckout(item)">办理退房</button>
 							</view>
 						</view>
 					</view>
@@ -184,7 +184,7 @@
 		</view>
 		
 		<!-- 退房结算弹窗 -->
-		<view class="modal-mask" v-if="showModal" @tap="closeModal">
+		<view class="modal-mask" v-if="showModal">
 			<view class="modal-content modal-large" @tap.stop>
 				<view class="modal-header">
 					<text class="modal-title">退房结算 - {{ checkoutData.room }}</text>
@@ -275,7 +275,7 @@
 				</view>
 				<view class="modal-footer">
 					<button class="btn btn-default" @tap="closeModal">取消</button>
-					<button class="btn btn-primary" @tap="confirmCheckout">确认退房</button>
+					<button v-if="can('checkout:handle')" class="btn btn-primary" @tap="confirmCheckout">确认退房</button>
 				</view>
 			</view>
 		</view>
@@ -340,7 +340,7 @@ export default {
 		}
 	},
 	onLoad(options = {}) {
-		this.quickRoomNumber = options.roomNumber || ''
+		this.quickRoomNumber = options.roomNo || options.roomNumber || ''
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
@@ -348,18 +348,51 @@ export default {
 		})
 		this.loadCheckoutData()
 	},
+	mounted() {
+		if (typeof document !== 'undefined') {
+			document.addEventListener('keydown', this.handleEscClose)
+		}
+	},
+	beforeDestroy() {
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('keydown', this.handleEscClose)
+		}
+	},
 	methods: {
 		async loadCheckoutData() {
 			try {
-				const rooms = await this.$api.get('/api/rooms', { status: 'occupied' })
-				const bills = await this.$api.get('/api/bills')
+				const canViewRooms = this.can('room:view')
+				const canViewBills = this.can('billing:view')
+				const results = await Promise.all([
+					canViewRooms ? this.$api.get('/api/rooms', { status: 'occupied' }) : Promise.resolve([]),
+					canViewBills ? this.$api.get('/api/bills') : Promise.resolve([])
+				])
+				const rooms = results[0] || []
+				const bills = results[1] || []
 				const unpaidBills = (bills || []).filter(bill => bill.status !== 'paid')
-				this.currentGuests = (rooms || []).map(room => {
-					const bill = unpaidBills.find(item => item.roomNumber === room.number) || {}
-					return {
-						room: room.number,
-						name: room.guest ? room.guest.name : bill.guestName,
-						roomType: room.typeName,
+				if (canViewRooms) {
+					this.currentGuests = rooms.map(room => {
+						const bill = unpaidBills.find(item => item.roomNumber === room.number) || {}
+						return {
+							room: room.number,
+							name: room.guest ? room.guest.name : bill.guestName,
+							roomType: room.typeName,
+							checkin: room.guest && room.guest.checkin ? room.guest.checkin : '',
+							checkout: room.guest && room.guest.checkout ? room.guest.checkout : '',
+							nights: 1,
+							roomFee: Number(bill.roomAmount || 0),
+							dining: 0,
+							minibar: Number(bill.serviceAmount || 0),
+							total: Number(bill.totalAmount || 0),
+							deposit: Number(bill.paidAmount || 0),
+							billId: bill.id
+						}
+					})
+				} else {
+					this.currentGuests = unpaidBills.map(bill => ({
+						room: bill.roomNumber,
+						name: bill.guestName,
+						roomType: '',
 						checkin: '',
 						checkout: '',
 						nights: 1,
@@ -369,8 +402,8 @@ export default {
 						total: Number(bill.totalAmount || 0),
 						deposit: Number(bill.paidAmount || 0),
 						billId: bill.id
-					}
-				})
+					}))
+				}
 				this.todayCheckouts = this.currentGuests.map(item => ({
 					room: item.room,
 					name: item.name,
@@ -400,10 +433,15 @@ export default {
 			}
 			const selected = this.currentGuests.find(item => String(item.room) === String(this.quickRoomNumber))
 			if (!selected) {
-				this.showToast(`房间 ${this.quickRoomNumber} 当前不可退房`)
+				this.showToast('未找到对应在住房间，无法办理退房结算')
 				this.quickRoomNumber = ''
 				return
 			}
+			if (this.showModal && String(this.checkoutData.room) === String(selected.room)) {
+				this.quickRoomNumber = ''
+				return
+			}
+			this.activeTab = 'checkout'
 			this.checkoutData = { ...selected }
 			this.showModal = true
 			this.quickRoomNumber = ''
@@ -413,42 +451,40 @@ export default {
 		},
 		handleNavigate(page) {
 			this.currentPage = page
-			const pageNames = {
-				'index': '仪表盘',
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'billing': '账单管理',
-				'housekeeping': '客房清洁',
-				'shift': '交接班管理',
-				'guest-history': '客户档案',
-				'reports': '报表统计',
-				'system': '系统设置'
-			}
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		showCheckoutModal() {
+			if (!this.can('checkout:handle')) {
+				this.showNoPermission()
+				return
+			}
 			if (this.currentGuests.length > 0) {
 				this.checkoutData = { ...this.currentGuests[0] }
 			}
 			this.showModal = true
 		},
 		doCheckout(item) {
+			if (!this.can('checkout:handle')) {
+				this.showNoPermission()
+				return
+			}
 			this.checkoutData = { ...item }
 			this.showModal = true
 		},
 		closeModal() {
 			this.showModal = false
 		},
-		confirmCheckout() {
-			this.showToast('退房办理成功！')
-			this.closeModal()
+		handleEscClose(event) {
+			if (event.key === 'Escape' && this.showModal) {
+				this.closeModal()
+			}
 		},
 		async confirmCheckout() {
+			if (!this.can('checkout:handle')) {
+				this.showNoPermission()
+				return
+			}
 			if (!this.checkoutData.room) {
 				this.showToast('请选择退房房间')
 				return
@@ -457,7 +493,7 @@ export default {
 				await this.$api.post('/api/checkout', {
 					roomNumber: this.checkoutData.room,
 					paymentMethod: this.selectedPayment,
-					paidAmount: this.checkoutData.total
+					paidAmount: this.checkoutData.total || null
 				})
 				this.showToast('退房办理成功')
 				this.closeModal()

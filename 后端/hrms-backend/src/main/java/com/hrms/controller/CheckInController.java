@@ -28,7 +28,7 @@ public class CheckInController {
      */
     @Operation(summary = "办理入住")
     @PostMapping("/api/checkin")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK"})
+    @RoleRequired({"ADMIN", "FRONT_DESK"})
     public ApiResponse<CheckInResult> checkIn(@RequestBody CheckInRequest request) {
         return ApiResponse.success(checkInService.checkIn(request));
     }
@@ -38,9 +38,8 @@ public class CheckInController {
      */
     @Operation(summary = "办理退房")
     @PostMapping("/api/checkout")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK", "FINANCE"})
+    @RoleRequired({"ADMIN", "FRONT_DESK", "FINANCE"})
     public ApiResponse<CheckOutResult> checkOut(@RequestBody CheckOutRequest request) {
         return ApiResponse.success(checkInService.checkOut(request));
     }
 }
-

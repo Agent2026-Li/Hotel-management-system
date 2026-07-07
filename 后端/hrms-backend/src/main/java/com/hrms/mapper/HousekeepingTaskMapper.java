@@ -29,13 +29,14 @@ public interface HousekeepingTaskMapper {
     /** 更新清洁任务状态。 */
     @Update("""
             update housekeeping_task
-            set status = #{status}, completed_at = #{completedAt}, remark = #{remark}
+            set status = #{status}, assigned_to = #{assignedTo}, completed_at = #{completedAt}, remark = #{remark}
             where id = #{id}
             """)
     int updateStatus(@Param("id") String id, @Param("status") String status,
+                     @Param("assignedTo") String assignedTo,
                      @Param("completedAt") LocalDateTime completedAt, @Param("remark") String remark);
 
     /** 查询清洁任务列表。 */
-    List<HousekeepingTask> selectTaskList(@Param("status") String status, @Param("roomNumber") String roomNumber);
+    List<HousekeepingTask> selectTaskList(@Param("status") String status, @Param("roomNumber") String roomNumber,
+                                          @Param("assignedTo") String assignedTo);
 }
-

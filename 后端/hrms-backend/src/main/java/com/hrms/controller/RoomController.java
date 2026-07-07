@@ -37,6 +37,7 @@ public class RoomController {
      */
     @Operation(summary = "查询房间列表")
     @GetMapping
+    @RoleRequired({"ADMIN", "FRONT_DESK", "MANAGER"})
     public ApiResponse<List<RoomResponse>> list(@RequestParam(required = false) String status,
                                                 @RequestParam(required = false) Integer floor) {
         return ApiResponse.success(roomService.list(status, floor));
@@ -47,6 +48,7 @@ public class RoomController {
      */
     @Operation(summary = "查询房间详情")
     @GetMapping("/{number}")
+    @RoleRequired({"ADMIN", "FRONT_DESK", "MANAGER"})
     public ApiResponse<RoomResponse> get(@PathVariable String number) {
         return ApiResponse.success(roomService.get(number));
     }
@@ -56,7 +58,7 @@ public class RoomController {
      */
     @Operation(summary = "修改房间状态")
     @PatchMapping("/{number}/status")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK", "HOUSEKEEPING"})
+    @RoleRequired({"ADMIN", "MANAGER"})
     public ApiResponse<RoomResponse> updateStatus(@PathVariable String number, @Valid @RequestBody RoomStatusUpdateRequest request) {
         return ApiResponse.success(roomService.updateStatus(number, request));
     }
@@ -66,7 +68,7 @@ public class RoomController {
      */
     @Operation(summary = "办理换房")
     @PostMapping("/{number}/change-room")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK"})
+    @RoleRequired({"ADMIN", "FRONT_DESK"})
     public ApiResponse<RoomResponse> changeRoom(@PathVariable String number, @Valid @RequestBody ChangeRoomRequest request) {
         return ApiResponse.success(roomService.changeRoom(number, request));
     }
@@ -76,9 +78,8 @@ public class RoomController {
      */
     @Operation(summary = "办理续住")
     @PatchMapping("/{number}/extend-stay")
-    @RoleRequired({"ADMIN", "MANAGER", "FRONT_DESK"})
+    @RoleRequired({"ADMIN", "FRONT_DESK"})
     public ApiResponse<RoomResponse> extendStay(@PathVariable String number, @Valid @RequestBody ExtendStayRequest request) {
         return ApiResponse.success(roomService.extendStay(number, request));
     }
 }
-

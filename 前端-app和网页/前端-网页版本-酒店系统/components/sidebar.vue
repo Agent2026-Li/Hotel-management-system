@@ -5,93 +5,15 @@
 			<text class="sidebar-title">酒店管理系统</text>
 		</view>
 		<view class="sidebar-menu">
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'index' }"
-				@tap="navigateTo('index')"
+			<view
+				v-for="item in visibleMenus"
+				:key="item.page"
+				class="menu-item"
+				:class="{ active: currentPage === item.page }"
+				@tap="navigateTo(item.page)"
 			>
-				<text class="menu-icon">📊</text>
-				<text class="menu-text">仪表盘</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'room-status' }"
-				@tap="navigateTo('room-status')"
-			>
-				<text class="menu-icon">🛏️</text>
-				<text class="menu-text">房态管理</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'reservation' }"
-				@tap="navigateTo('reservation')"
-			>
-				<text class="menu-icon">📝</text>
-				<text class="menu-text">预订管理</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'checkin' }"
-				@tap="navigateTo('checkin')"
-			>
-				<text class="menu-icon">🔑</text>
-				<text class="menu-text">入住登记</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'checkout' }"
-				@tap="navigateTo('checkout')"
-			>
-				<text class="menu-icon">💳</text>
-				<text class="menu-text">退房结算</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'billing' }"
-				@tap="navigateTo('billing')"
-			>
-				<text class="menu-icon">📋</text>
-				<text class="menu-text">账单管理</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'housekeeping' }"
-				@tap="navigateTo('housekeeping')"
-			>
-				<text class="menu-icon">🧹</text>
-				<text class="menu-text">客房清洁</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'shift' }"
-				@tap="navigateTo('shift')"
-			>
-				<text class="menu-icon">🔄</text>
-				<text class="menu-text">交接班管理</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'guest-history' }"
-				@tap="navigateTo('guest-history')"
-			>
-				<text class="menu-icon">👥</text>
-				<text class="menu-text">客户档案</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'reports' }"
-				@tap="navigateTo('reports')"
-			>
-				<text class="menu-icon">📈</text>
-				<text class="menu-text">报表统计</text>
-			</view>
-			<view 
-				class="menu-item" 
-				:class="{ active: currentPage === 'system' }"
-				@tap="navigateTo('system')"
-			>
-				<text class="menu-icon">⚙️</text>
-				<text class="menu-text">系统设置</text>
+				<text class="menu-icon">{{ item.icon }}</text>
+				<text class="menu-text">{{ item.name }}</text>
 			</view>
 		</view>
 	</view>
@@ -110,8 +32,18 @@ export default {
 			default: false
 		}
 	},
+	computed: {
+		visibleMenus() {
+			const user = this.$api.getCurrentUser()
+			return this.$rbac.getAllowedMenus(user.role)
+		}
+	},
 	methods: {
 		navigateTo(page) {
+			if (!this.canAccessPage(page)) {
+				this.showNoPermission()
+				return
+			}
 			this.$emit('navigate', page)
 		}
 	}

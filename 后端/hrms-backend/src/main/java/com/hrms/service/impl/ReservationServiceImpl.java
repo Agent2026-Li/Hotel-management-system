@@ -44,34 +44,44 @@ public class ReservationServiceImpl implements ReservationService {
     @Override
     @Transactional
     public ReservationResponse create(ReservationRequest request) {
-        if (!request.checkout.isAfter(request.checkin)) {
-            throw new BusinessException(400, "离店日期必须晚于入住日期");
-        }
-        RoomType roomType = roomTypeMapper.getById(request.roomType);
-        if (roomType == null) {
-            throw new BusinessException(404, "房型不存在");
-        }
+        validateDates(request);
+        RoomType roomType = getRoomType(request.roomType);
         Room room = chooseRoom(request);
-        long nights = ChronoUnit.DAYS.between(request.checkin, request.checkout);
 
-        Reservation reservation = new Reservation();
-        reservation.id = idGenerator.reservationId();
-        reservation.name = request.name;
-        reservation.phone = request.phone;
-        reservation.roomType = request.roomType;
-        reservation.roomNumber = room.roomNumber;
-        reservation.checkin = request.checkin;
-        reservation.checkout = request.checkout;
-        reservation.nights = Math.toIntExact(nights);
-        reservation.amount = roomType.price.multiply(BigDecimal.valueOf(nights));
-        reservation.status = "confirmed";
-        reservation.remark = request.remark;
+        Reservation reservation = buildReservation(idGenerator.reservationId(), request, roomType,
+                room.roomNumber, "confirmed");
         reservationMapper.insert(reservation);
         roomMapper.updateStatus(room.roomNumber, "RS");
-        return reservationMapper.selectReservationList(null).stream()
-                .filter(item -> item.id.equals(reservation.id))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(500, "预订创建后查询失败"));
+        return getResponse(reservation.id);
+    }
+
+    @Override
+    @Transactional
+    public ReservationResponse update(String id, ReservationRequest request) {
+        validateDates(request);
+        Reservation existing = getEntity(id);
+        if ("checked_in".equals(existing.status)) {
+            throw new BusinessException(400, "已入住的预订不能编辑");
+        }
+        if ("checked_out".equals(existing.status)) {
+            throw new BusinessException(400, "已退房的预订不能编辑");
+        }
+
+        RoomType roomType = getRoomType(request.roomType);
+        String roomNumber = existing.roomNumber;
+        if ("confirmed".equals(existing.status)) {
+            Room room = chooseRoomForUpdate(existing, request);
+            roomNumber = room.roomNumber;
+            syncReservedRoom(existing.roomNumber, roomNumber);
+        } else if (!request.roomType.equals(existing.roomType)) {
+            roomNumber = null;
+        }
+
+        Reservation reservation = buildReservation(id, request, roomType, roomNumber, existing.status);
+        if (reservationMapper.update(reservation) == 0) {
+            throw new BusinessException(404, "预订不存在");
+        }
+        return getResponse(id);
     }
 
     @Override
@@ -86,10 +96,7 @@ public class ReservationServiceImpl implements ReservationService {
         if (room != null && "RS".equals(room.status)) {
             roomMapper.updateStatus(room.roomNumber, "VC");
         }
-        return reservationMapper.selectReservationList(null).stream()
-                .filter(item -> item.id.equals(id))
-                .findFirst()
-                .orElseThrow(() -> new BusinessException(404, "预订不存在"));
+        return getResponse(id);
     }
 
     private Reservation getEntity(String id) {
@@ -97,6 +104,45 @@ public class ReservationServiceImpl implements ReservationService {
         if (reservation == null) {
             throw new BusinessException(404, "预订不存在");
         }
+        return reservation;
+    }
+
+    private ReservationResponse getResponse(String id) {
+        return reservationMapper.selectReservationList(null).stream()
+                .filter(item -> item.id.equals(id))
+                .findFirst()
+                .orElseThrow(() -> new BusinessException(404, "预订不存在"));
+    }
+
+    private void validateDates(ReservationRequest request) {
+        if (!request.checkout.isAfter(request.checkin)) {
+            throw new BusinessException(400, "离店日期必须晚于入住日期");
+        }
+    }
+
+    private RoomType getRoomType(String roomTypeId) {
+        RoomType roomType = roomTypeMapper.getById(roomTypeId);
+        if (roomType == null) {
+            throw new BusinessException(404, "房型不存在");
+        }
+        return roomType;
+    }
+
+    private Reservation buildReservation(String id, ReservationRequest request, RoomType roomType,
+                                         String roomNumber, String status) {
+        long nights = ChronoUnit.DAYS.between(request.checkin, request.checkout);
+        Reservation reservation = new Reservation();
+        reservation.id = id;
+        reservation.name = request.name;
+        reservation.phone = request.phone;
+        reservation.roomType = request.roomType;
+        reservation.roomNumber = roomNumber;
+        reservation.checkin = request.checkin;
+        reservation.checkout = request.checkout;
+        reservation.nights = Math.toIntExact(nights);
+        reservation.amount = roomType.price.multiply(BigDecimal.valueOf(nights));
+        reservation.status = status;
+        reservation.remark = request.remark;
         return reservation;
     }
 
@@ -119,5 +165,49 @@ public class ReservationServiceImpl implements ReservationService {
             throw new BusinessException(409, "当前房型无可预订空房");
         }
         return room;
+    }
+
+    private Room chooseRoomForUpdate(Reservation existing, ReservationRequest request) {
+        if (request.roomNumber != null && !request.roomNumber.isBlank()) {
+            Room selected = roomMapper.getByRoomNumber(request.roomNumber);
+            if (selected == null) {
+                throw new BusinessException(404, "指定房间不存在");
+            }
+            if (!request.roomType.equals(selected.typeId)) {
+                throw new BusinessException(400, "指定房间与房型不匹配");
+            }
+            boolean sameRoom = request.roomNumber.equals(existing.roomNumber);
+            if (!sameRoom && !"VC".equals(selected.status)) {
+                throw new BusinessException(400, "指定房间不是空净房");
+            }
+            if (sameRoom && !"RS".equals(selected.status) && !"VC".equals(selected.status)) {
+                throw new BusinessException(400, "当前预订房间状态不能编辑");
+            }
+            return selected;
+        }
+
+        if (existing.roomNumber != null && !existing.roomNumber.isBlank()) {
+            Room current = roomMapper.getByRoomNumber(existing.roomNumber);
+            if (current != null && request.roomType.equals(current.typeId)
+                    && ("RS".equals(current.status) || "VC".equals(current.status))) {
+                return current;
+            }
+        }
+
+        Room room = roomMapper.findFirstVacantByType(request.roomType);
+        if (room == null) {
+            throw new BusinessException(409, "当前房型无可预订空房");
+        }
+        return room;
+    }
+
+    private void syncReservedRoom(String oldRoomNumber, String newRoomNumber) {
+        if (oldRoomNumber != null && !oldRoomNumber.equals(newRoomNumber)) {
+            Room oldRoom = roomMapper.getByRoomNumber(oldRoomNumber);
+            if (oldRoom != null && "RS".equals(oldRoom.status)) {
+                roomMapper.updateStatus(oldRoom.roomNumber, "VC");
+            }
+        }
+        roomMapper.updateStatus(newRoomNumber, "RS");
     }
 }

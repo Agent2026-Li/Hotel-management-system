@@ -187,11 +187,11 @@
 					<view class="detail-section">
 						<view class="detail-title">快速操作</view>
 						<view class="action-buttons">
-							<view class="action-btn" @tap="handleAction('change')">🔄 换房</view>
-							<view class="action-btn" @tap="handleAction('extend')">⏰ 续住</view>
-							<view class="action-btn" @tap="handleAction('charge')">➕ 加消费</view>
-							<view class="action-btn" @tap="handleAction('clean')">🧹 清洁</view>
-							<view class="action-btn danger" @tap="handleAction('checkout')">💳 退房</view>
+							<view v-if="can('room:change')" class="action-btn" @tap="handleAction('change')">🔄 换房</view>
+							<view v-if="can('room:extend')" class="action-btn" @tap="handleAction('extend')">⏰ 续住</view>
+							<view v-if="can('billing:edit')" class="action-btn" @tap="handleAction('charge')">➕ 加消费</view>
+							<view v-if="can('room:update')" class="action-btn" @tap="handleAction('clean')">🧹 清洁</view>
+							<view v-if="can('checkout:handle')" class="action-btn danger" @tap="handleAction('checkout')">💳 退房</view>
 						</view>
 					</view>
 				</view>
@@ -403,23 +403,8 @@ export default {
 		},
 		handleNavigate(page) {
 			this.currentPage = page
-			const pageNames = {
-				'index': '仪表盘',
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'billing': '账单管理',
-				'housekeeping': '客房清洁',
-				'shift': '交接班管理',
-				'guest-history': '客户档案',
-				'reports': '报表统计',
-				'system': '系统设置'
-			}
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		async openChangeRoomModal() {
 			try {
@@ -457,6 +442,10 @@ export default {
 			this.extendCheckout = e.detail.value
 		},
 		async confirmChangeRoom() {
+			if (!this.can('room:change')) {
+				this.showNoPermission()
+				return
+			}
 			if (!this.changeTargetRoom) {
 				this.showToast('请选择目标房间')
 				return
@@ -474,6 +463,10 @@ export default {
 			}
 		},
 		async confirmExtendStay() {
+			if (!this.can('room:extend')) {
+				this.showNoPermission()
+				return
+			}
 			if (!this.extendCheckout) {
 				this.showToast('请选择续住日期')
 				return
@@ -499,14 +492,28 @@ export default {
 			date.setDate(date.getDate() + days)
 			return date.toISOString().split('T')[0]
 		},
+		actionPermission(action) {
+			const permissions = {
+				change: 'room:change',
+				extend: 'room:extend',
+				charge: 'billing:edit',
+				clean: 'room:update',
+				checkout: 'checkout:handle'
+			}
+			return permissions[action]
+		},
 		async performRoomAction(action) {
+			const permission = this.actionPermission(action)
+			if (permission && !this.can(permission)) {
+				this.showNoPermission()
+				return
+			}
 			const roomNumber = this.selectedRoom && this.selectedRoom.number
 			const roomStatus = this.selectedRoom && this.selectedRoom.status
 			if (!roomNumber) {
 				this.showToast('请先选择房间')
 				return
 			}
-			const encodedRoom = encodeURIComponent(roomNumber)
 			if (action === 'change') {
 				if (roomStatus !== 'occupied') {
 					this.showToast('只有在住房可以办理换房')
@@ -529,7 +536,7 @@ export default {
 					return
 				}
 				this.closeModal()
-				uni.navigateTo({ url: `/pages/billing/index?action=charge&roomNumber=${encodedRoom}` })
+				this.navigateToPage('billing', { action: 'charge', roomNumber })
 				return
 			}
 			if (action === 'clean') {
@@ -553,7 +560,7 @@ export default {
 					return
 				}
 				this.closeModal()
-				uni.navigateTo({ url: `/pages/checkout/index?roomNumber=${encodedRoom}` })
+				this.navigateToPage('checkout', { roomNumber })
 			}
 		},
 		async handleAction(action) {

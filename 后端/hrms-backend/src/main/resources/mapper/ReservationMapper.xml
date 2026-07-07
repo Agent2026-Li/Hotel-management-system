@@ -4,31 +4,38 @@
 <mapper namespace="com.hrms.mapper.ReservationMapper">
     <!-- 查询预订列表，支持按状态筛选 -->
     <select id="selectReservationList" resultType="com.hrms.dto.response.ReservationResponse">
-        select id,
-               name,
-               phone,
-               room_type as roomType,
-               room_number as roomNumber,
-               checkin,
-               checkout,
-               nights,
-               amount,
-               status,
-               case status
-                   when 'confirmed' then '已确认'
-                   when 'cancelled' then '已取消'
+        select r.id,
+               r.name,
+               r.phone,
+               r.room_type as roomType,
+               r.room_number as roomNumber,
+               r.checkin,
+               r.checkout,
+               r.nights,
+               r.amount,
+               r.status,
+               case r.status
+                   when 'pending' then '待确认'
+                   when 'confirmed' then '待入住'
                    when 'checked_in' then '已入住'
                    when 'checked_out' then '已退房'
+                   when 'cancelled' then '已取消'
                    else '未知'
                end as statusName,
-               remark
-        from reservation
+               (
+                   select cir.checkin_time
+                   from check_in_record cir
+                   where cir.reservation_id = r.id
+                   order by cir.checkin_time desc
+                   limit 1
+               ) as checkInTime,
+               r.remark
+        from reservation r
         <where>
             <if test="status != null and status != ''">
-                and status = #{status}
+                and r.status = #{status}
             </if>
         </where>
-        order by id
+        order by r.id
     </select>
 </mapper>
-

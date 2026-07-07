@@ -21,7 +21,7 @@
 							<picker :range="statusOptions" range-key="label" @change="onStatusChange">
 								<view class="filter-btn">{{ selectedStatus.label || '全部状态' }}</view>
 							</picker>
-							<button class="btn btn-primary btn-sm" @tap="showAddModal">+ 新建预订</button>
+							<button v-if="can('reservation:create')" class="btn btn-primary btn-sm" @tap="showAddModal">+ 新建预订</button>
 						</view>
 					</view>
 					
@@ -52,7 +52,7 @@
 										<td>{{ item.id }}</td>
 										<td>{{ item.name }}</td>
 										<td>{{ item.phone }}</td>
-										<td>{{ item.roomType }}</td>
+										<td>{{ getRoomTypeName(item.roomType) }}</td>
 										<td>{{ item.checkin }}</td>
 										<td>{{ item.checkout }}</td>
 										<td>{{ item.nights }}晚</td>
@@ -64,9 +64,10 @@
 										</td>
 										<td>
 											<view class="action-btns">
-												<text class="action-link" @tap="editReservation(item)">编辑</text>
-												<text class="action-link" @tap="checkinReservation(item)">入住</text>
-												<text class="action-link danger" @tap="cancelReservation(item)">取消</text>
+												<text v-if="canEditReservation(item)" class="action-link" @tap="editReservation(item)">编辑</text>
+												<text v-if="canCheckInReservation(item)" class="action-link" @tap="handleCheckIn(item)">入住</text>
+												<text v-if="canCancelReservation(item)" class="action-link danger" @tap="cancelReservation(item)">取消</text>
+												<text v-if="canViewReservation(item)" class="action-link" @tap="viewReservation(item)">查看</text>
 											</view>
 										</td>
 									</tr>
@@ -82,7 +83,7 @@
 		<view class="mobile-layout" v-else>
 			<view class="mobile-header">
 				<text class="mobile-title">预订管理</text>
-				<view class="header-add" @tap="showAddModal">+ 新建</view>
+				<view v-if="can('reservation:create')" class="header-add" @tap="showAddModal">+ 新建</view>
 			</view>
 			<view class="mobile-content">
 				<!-- 搜索框 -->
@@ -103,15 +104,17 @@
 								<text class="guest-phone">{{ item.phone }}</text>
 							</view>
 							<view class="room-info">
-								<text class="room-type">{{ item.roomType }}</text>
+								<text class="room-type">{{ getRoomTypeName(item.roomType) }}</text>
 								<text class="room-dates">{{ item.checkin }} - {{ item.checkout }}</text>
 							</view>
 						</view>
 						<view class="card-bottom">
 							<text class="res-amount">¥{{ item.amount }}</text>
 							<view class="card-actions">
-								<text class="action-text" @tap="editReservation(item)">编辑</text>
-								<text class="action-text primary" @tap="checkinReservation(item)">入住</text>
+								<text v-if="canEditReservation(item)" class="action-text" @tap="editReservation(item)">编辑</text>
+								<text v-if="canCheckInReservation(item)" class="action-text primary" @tap="handleCheckIn(item)">入住</text>
+								<text v-if="canCancelReservation(item)" class="action-text danger" @tap="cancelReservation(item)">取消</text>
+								<text v-if="canViewReservation(item)" class="action-text" @tap="viewReservation(item)">查看</text>
 							</view>
 						</view>
 					</view>
@@ -120,7 +123,7 @@
 		</view>
 		
 		<!-- 新建/编辑预订弹窗 -->
-		<view class="modal-mask" v-if="showModal" @tap="closeModal">
+		<view class="modal-mask" v-if="showModal">
 			<view class="modal-content modal-form" @tap.stop>
 				<view class="modal-header">
 					<text class="modal-title">{{ isEdit ? '编辑预订' : '新建预订' }}</text>
@@ -142,9 +145,21 @@
 					<view class="form-row">
 						<view class="form-group">
 							<label class="form-label">房型 <text class="required">*</text></label>
-							<picker :range="roomTypeOptions" range-key="name" @change="onRoomTypeChange">
-								<view class="form-input picker-value">{{ formData.roomTypeName || '请选择房型' }}</view>
-							</picker>
+							<select
+								id="reservation-room-type"
+								ref="roomTypeSelect"
+								class="form-input form-select"
+								v-model="formData.roomType"
+								@change="onRoomTypeSelect"
+								@input="onRoomTypeSelect"
+								@blur="onRoomTypeSelect"
+							>
+								<option value="" disabled>请选择房型</option>
+								<option value="RT001">标准单人间</option>
+								<option value="RT002">标准双人间</option>
+								<option value="RT003">豪华大床房</option>
+								<option value="RT004">行政套房</option>
+							</select>
 						</view>
 						<view class="form-group">
 							<label class="form-label">房间数</label>
@@ -176,7 +191,7 @@
 				</view>
 				<view class="modal-footer">
 					<button class="btn btn-default" @tap="closeModal">取消</button>
-					<button class="btn btn-primary" @tap="saveReservation">保存</button>
+					<button v-if="isEdit ? can('reservation:update') : can('reservation:create')" class="btn btn-primary" @tap="saveReservation">保存</button>
 				</view>
 			</view>
 		</view>
@@ -210,10 +225,11 @@ export default {
 			selectedStatus: {},
 			statusOptions: [
 				{ label: '全部状态', value: '' },
-				{ label: '待入住', value: 'pending' },
+				{ label: '待确认', value: 'pending' },
+				{ label: '待入住', value: 'confirmed' },
 				{ label: '已入住', value: 'checked_in' },
-				{ label: '已取消', value: 'cancelled' },
-				{ label: '已退房', value: 'checked_out' }
+				{ label: '已退房', value: 'checked_out' },
+				{ label: '已取消', value: 'cancelled' }
 			],
 			showModal: false,
 			isEdit: false,
@@ -232,17 +248,17 @@ export default {
 				remark: ''
 			},
 			roomTypeOptions: [
-				{ name: '豪华大床房', price: 488 },
-				{ name: '标准双床房', price: 358 },
-				{ name: '行政套房', price: 888 },
-				{ name: '经济单人房', price: 258 }
+				{ id: 'RT001', name: '标准单人间', price: 199 },
+				{ id: 'RT002', name: '标准双人间', price: 259 },
+				{ id: 'RT003', name: '豪华大床房', price: 399 },
+				{ id: 'RT004', name: '行政套房', price: 699 }
 			],
 			reservations: [
-				{ id: 'RES2026062701', name: '张三', phone: '13912345678', roomType: '豪华大床房', checkin: '2026-06-28', checkout: '2026-06-30', nights: 2, amount: '976', status: 'pending', statusName: '待入住' },
-				{ id: 'RES2026062702', name: '李四', phone: '13823456789', roomType: '标准双床房', checkin: '2026-06-29', checkout: '2026-07-01', nights: 2, amount: '716', status: 'pending', statusName: '待入住' },
-				{ id: 'RES2026062601', name: '王五', phone: '13734567890', roomType: '行政套房', checkin: '2026-06-26', checkout: '2026-06-28', nights: 2, amount: '1,776', status: 'checked_in', statusName: '已入住' },
-				{ id: 'RES2026062501', name: '赵六', phone: '13645678901', roomType: '经济单人房', checkin: '2026-06-25', checkout: '2026-06-27', nights: 2, amount: '516', status: 'checked_out', statusName: '已退房' },
-				{ id: 'RES2026062401', name: '钱七', phone: '13556789012', roomType: '标准双床房', checkin: '2026-06-24', checkout: '2026-06-26', nights: 2, amount: '716', status: 'cancelled', statusName: '已取消' }
+				{ id: 'RES2026070701', name: '张三', phone: '13912345678', roomType: 'RT003', roomNumber: '601', checkin: '2026-07-08', checkout: '2026-07-10', nights: 2, amount: '798', status: 'pending', statusName: '待确认' },
+				{ id: 'RES2026070702', name: '李四', phone: '13823456789', roomType: 'RT002', roomNumber: '201', checkin: '2026-07-08', checkout: '2026-07-10', nights: 2, amount: '518', status: 'confirmed', statusName: '待入住' },
+				{ id: 'RES2026062601', name: '王五', phone: '13734567890', roomType: 'RT004', checkin: '2026-06-26', checkout: '2026-06-28', nights: 2, amount: '1,776', status: 'checked_in', statusName: '已入住' },
+				{ id: 'RES2026062501', name: '赵六', phone: '13645678901', roomType: 'RT001', checkin: '2026-06-25', checkout: '2026-06-27', nights: 2, amount: '516', status: 'checked_out', statusName: '已退房' },
+				{ id: 'RES2026062401', name: '钱七', phone: '13556789012', roomType: 'RT002', checkin: '2026-06-24', checkout: '2026-06-26', nights: 2, amount: '716', status: 'cancelled', statusName: '已取消' }
 			]
 		}
 	},
@@ -257,6 +273,7 @@ export default {
 			{ id: 'RT003', name: '豪华大床房', price: 399 },
 			{ id: 'RT004', name: '行政套房', price: 699 }
 		]
+		this.reservations = this.reservations.map(this.normalizeReservation)
 		uni.getSystemInfo({
 			success: (res) => {
 				this.isPC = res.windowWidth >= 768
@@ -264,6 +281,16 @@ export default {
 		})
 		this.loadReservations()
 		this.handleQuickEntry()
+	},
+	mounted() {
+		if (typeof document !== 'undefined') {
+			document.addEventListener('keydown', this.handleEscClose)
+		}
+	},
+	beforeDestroy() {
+		if (typeof document !== 'undefined') {
+			document.removeEventListener('keydown', this.handleEscClose)
+		}
 	},
 	methods: {
 		handleQuickEntry() {
@@ -276,33 +303,65 @@ export default {
 		},
 		async loadReservations() {
 			try {
-				this.reservations = await this.$api.get('/api/reservations')
+				const params = this.selectedStatus && this.selectedStatus.value
+					? { status: this.selectedStatus.value }
+					: {}
+				const reservations = await this.$api.get('/api/reservations', params)
+				this.reservations = (reservations || []).map(this.normalizeReservation)
 			} catch (error) {
 				this.showToast(error.message || '预订加载失败')
 			}
+		},
+		normalizeReservation(item) {
+			const roomType = this.resolveRoomType(item.roomType)
+			return {
+				...item,
+				roomType: roomType ? roomType.id : item.roomType,
+				roomTypeName: roomType ? roomType.name : item.roomTypeName,
+				statusName: this.getReservationStatusName(item.status),
+				checkInTime: item.checkInTime || item.checkinTime || ''
+			}
+		},
+		resolveRoomType(value) {
+			const normalizedValue = value === undefined || value === null ? '' : String(value).trim()
+			if (!normalizedValue) {
+				return null
+			}
+			return this.roomTypeOptions.find(option => option.id === normalizedValue || option.name === normalizedValue)
+		},
+		getRoomTypeName(value) {
+			const roomType = this.resolveRoomType(value)
+			return roomType ? roomType.name : (value || '')
+		},
+		getReservationStatusName(status) {
+			const names = {
+				pending: '待确认',
+				confirmed: '待入住',
+				checked_in: '已入住',
+				checked_out: '已退房',
+				cancelled: '已取消'
+			}
+			return names[status] || '未知'
+		},
+		canEditReservation(item) {
+			return this.can('reservation:update') && ['pending', 'confirmed'].includes(item.status)
+		},
+		canCheckInReservation(item) {
+			return this.can('checkin:handle') && item.status === 'confirmed'
+		},
+		canCancelReservation(item) {
+			return this.can('reservation:cancel') && ['pending', 'confirmed'].includes(item.status)
+		},
+		canViewReservation(item) {
+			return ['checked_in', 'checked_out', 'cancelled'].includes(item.status)
 		},
 		toggleSidebar() {
 			this.isSidebarCollapsed = !this.isSidebarCollapsed
 		},
 		handleNavigate(page) {
 			this.currentPage = page
-			const pageNames = {
-				'index': '仪表盘',
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'billing': '账单管理',
-				'housekeeping': '客房清洁',
-				'shift': '交接班管理',
-				'guest-history': '客户档案',
-				'reports': '报表统计',
-				'system': '系统设置'
-			}
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		onDateChange(e) {
 			this.checkinDate = e.detail.value
@@ -314,10 +373,58 @@ export default {
 			this.selectedStatus = this.statusOptions[e.detail.value]
 			this.loadReservations()
 		},
-		onRoomTypeChange(e) {
-			const selected = this.roomTypeOptions[e.detail.value]
-			this.formData.roomType = selected.id || selected.name
+		getRoomTypeValueFromEvent(e) {
+			const eventTarget = e && (e.target || e.currentTarget || e.srcElement)
+			const values = [
+				eventTarget && eventTarget.value,
+				e && e.detail && e.detail.value,
+				this.formData.roomType
+			]
+			const eventValue = values.find(value => value !== undefined && value !== null && value !== '')
+			const selected = this.resolveRoomType(eventValue)
+			if (selected) {
+				return selected.id
+			}
+			const selectedIndex = eventTarget && typeof eventTarget.selectedIndex === 'number'
+				? eventTarget.selectedIndex
+				: -1
+			if (selectedIndex > 0 && eventTarget.options && eventTarget.options[selectedIndex]) {
+				return eventTarget.options[selectedIndex].value
+			}
+			const pickerIndex = Number(eventValue)
+			if (!Number.isNaN(pickerIndex) && this.roomTypeOptions[pickerIndex]) {
+				return this.roomTypeOptions[pickerIndex].id
+			}
+			return ''
+		},
+		setRoomType(value) {
+			const selected = this.resolveRoomType(value)
+			if (!selected) {
+				return false
+			}
+			if (this.formData.roomType && this.formData.roomType !== selected.id) {
+				this.formData.roomNumber = ''
+			}
+			this.formData.roomType = selected.id
 			this.formData.roomTypeName = selected.name
+			return true
+		},
+		syncRoomTypeFromSelect() {
+			if (this.setRoomType(this.formData.roomType || this.formData.roomTypeName)) {
+				return true
+			}
+			if (typeof document === 'undefined') {
+				return false
+			}
+			const select = document.getElementById('reservation-room-type')
+			return !!(select && this.setRoomType(select.value))
+		},
+		onRoomTypeSelect(e) {
+			const selectedRoomType = this.getRoomTypeValueFromEvent(e)
+			if (selectedRoomType && this.setRoomType(selectedRoomType)) {
+				return
+			}
+			this.syncRoomTypeFromSelect()
 		},
 		onFormDateChange(e) {
 			this.formData.checkin = e.detail.value
@@ -326,6 +433,10 @@ export default {
 			this.formData.checkout = e.detail.value
 		},
 		showAddModal() {
+			if (!this.can('reservation:create')) {
+				this.showNoPermission()
+				return
+			}
 			this.isEdit = false
 			this.formData = {
 				name: '',
@@ -342,48 +453,76 @@ export default {
 			this.showModal = true
 		},
 		editReservation(item) {
+			if (!this.canEditReservation(item)) {
+				this.showNoPermission()
+				return
+			}
 			this.isEdit = true
-			this.formData = { ...item }
+			const roomType = this.resolveRoomType(item.roomType)
+			this.formData = {
+				...item,
+				roomType: roomType ? roomType.id : item.roomType,
+				roomTypeName: roomType ? roomType.name : item.roomTypeName,
+				roomCount: item.roomCount || 1,
+				deposit: item.deposit || ''
+			}
 			this.showModal = true
-		},
-		checkinReservation(item) {
-			this.showToast('跳转入住登记页面')
-			uni.navigateTo({
-				url: '/pages/checkin/index'
-			})
-		},
-		cancelReservation(item) {
-			uni.showModal({
-				title: '提示',
-				content: '确定要取消该预订吗？',
-				success: (res) => {
-					if (res.confirm) {
-						this.showToast('预订已取消')
-					}
-				}
-			})
 		},
 		closeModal() {
 			this.showModal = false
 		},
-		saveReservation() {
-			if (!this.formData.name || !this.formData.phone) {
-				this.showToast('请填写必填项')
+		handleEscClose(event) {
+			if (event.key === 'Escape' && this.showModal) {
+				this.closeModal()
+			}
+		},
+		handleCheckIn(item) {
+			if (!this.can('checkin:handle')) {
+				this.showNoPermission()
 				return
 			}
-			this.showToast(this.isEdit ? '预订已更新' : '预订创建成功')
-			this.closeModal()
-		},
-		async checkinReservation(item) {
-			try {
-				await this.$api.post('/api/checkin', { reservationId: item.id })
-				this.showToast('预订入住成功')
-				await this.loadReservations()
-			} catch (error) {
-				this.showToast(error.message || '预订入住失败')
+			if (item.status !== 'confirmed') {
+				this.showToast('只有待入住的预约才能办理入住')
+				return
 			}
+			uni.showModal({
+				title: '办理入住',
+				content: `确定为 ${item.name} 的预约办理入住吗？`,
+				success: async (res) => {
+					if (!res.confirm) {
+						return
+					}
+					try {
+						const result = await this.$api.post('/api/checkin', { reservationId: item.id })
+						const checkInTime = result && result.checkIn && result.checkIn.checkinTime
+							? result.checkIn.checkinTime
+							: new Date().toISOString()
+						item.status = 'checked_in'
+						item.statusName = this.getReservationStatusName(item.status)
+						item.checkInTime = checkInTime
+						if (result && result.room && result.room.status) {
+							item.roomStatus = result.room.status
+						}
+						this.showToast('入住办理成功')
+						await this.loadReservations()
+					} catch (error) {
+						this.showToast(error.message || '入住办理失败')
+					}
+				}
+			})
+		},
+		checkinReservation(item) {
+			this.handleCheckIn(item)
 		},
 		cancelReservation(item) {
+			if (!this.can('reservation:cancel')) {
+				this.showNoPermission()
+				return
+			}
+			if (!['pending', 'confirmed'].includes(item.status)) {
+				this.showToast('只有待确认或待入住的预约才能取消')
+				return
+			}
 			uni.showModal({
 				title: '提示',
 				content: '确定要取消该预订吗？',
@@ -391,6 +530,8 @@ export default {
 					if (res.confirm) {
 						try {
 							await this.$api.post(`/api/reservations/${item.id}/cancel`)
+							item.status = 'cancelled'
+							item.statusName = this.getReservationStatusName(item.status)
 							this.showToast('预订已取消')
 							await this.loadReservations()
 						} catch (error) {
@@ -401,30 +542,45 @@ export default {
 			})
 		},
 		async saveReservation() {
-			if (!this.formData.name || !this.formData.phone || !this.formData.roomType || !this.formData.checkin || !this.formData.checkout) {
+			const permission = this.isEdit ? 'reservation:update' : 'reservation:create'
+			if (!this.can(permission)) {
+				this.showNoPermission()
+				return
+			}
+			this.syncRoomTypeFromSelect()
+			if (!this.formData.roomType) {
+				this.showToast('请选择房型')
+				return
+			}
+			if (!this.formData.name || !this.formData.phone || !this.formData.checkin || !this.formData.checkout) {
 				this.showToast('请填写完整预订信息')
 				return
 			}
-			if (this.isEdit) {
-				this.showToast('当前后端暂不支持编辑预订')
-				this.closeModal()
-				return
-			}
 			try {
-				await this.$api.post('/api/reservations', {
+				const payload = {
 					name: this.formData.name,
 					phone: this.formData.phone,
 					roomType: this.formData.roomType,
+					roomNumber: this.formData.roomNumber,
 					checkin: this.formData.checkin,
 					checkout: this.formData.checkout,
 					remark: this.formData.remark
-				})
-				this.showToast('预订创建成功')
+				}
+				if (this.isEdit) {
+					await this.$api.patch(`/api/reservations/${this.formData.id}`, payload)
+				} else {
+					await this.$api.post('/api/reservations', payload)
+				}
+				this.showToast(this.isEdit ? '预订已更新' : '预订创建成功')
 				this.closeModal()
 				await this.loadReservations()
 			} catch (error) {
-				this.showToast(error.message || '预订创建失败')
+				this.showToast(error.message || (this.isEdit ? '预订更新失败' : '预订创建失败'))
 			}
+		},
+		viewReservation(item) {
+			const time = item.checkInTime ? `，实际入住时间：${item.checkInTime}` : ''
+			this.showToast(`${item.name}：${item.statusName}${time}`)
 		},
 		showToast(message) {
 			this.toastMessage = message
@@ -641,6 +797,10 @@ export default {
 	color: #1677ff;
 }
 
+.action-text.danger {
+	color: #ff4d4f;
+}
+
 /* 弹窗 */
 .modal-mask {
 	position: fixed;
@@ -717,6 +877,13 @@ export default {
 	border: 1px solid #d9d9d9;
 	border-radius: 8rpx;
 	font-size: 28rpx;
+}
+
+.form-select {
+	height: 72rpx;
+	background: #fff;
+	color: #262626;
+	box-sizing: border-box;
 }
 
 .picker-value {

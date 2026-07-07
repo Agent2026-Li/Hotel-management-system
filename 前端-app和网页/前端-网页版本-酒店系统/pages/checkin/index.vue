@@ -119,7 +119,7 @@
 							
 							<view class="form-actions">
 								<button class="btn btn-default" @tap="resetForm">重置</button>
-								<button class="btn btn-primary" @tap="submitCheckin">确认入住</button>
+								<button v-if="can('checkin:handle')" class="btn btn-primary" @tap="submitCheckin">确认入住</button>
 							</view>
 						</view>
 						
@@ -143,7 +143,7 @@
 											<text>退房：{{ item.checkout }}</text>
 										</view>
 									</view>
-									<button class="btn btn-primary btn-sm" @tap="doReservedCheckin(item)">办理入住</button>
+									<button v-if="can('checkin:handle')" class="btn btn-primary btn-sm" @tap="doReservedCheckin(item)">办理入住</button>
 								</view>
 							</view>
 						</view>
@@ -218,7 +218,7 @@
 							<text>¥{{ estimatedRoomFee }}</text>
 						</view>
 					</view>
-					<button class="btn btn-primary full-width" @tap="submitCheckin">确认入住</button>
+					<button v-if="can('checkin:handle')" class="btn btn-primary full-width" @tap="submitCheckin">确认入住</button>
 				</view>
 				
 				<!-- 预订入住列表 -->
@@ -246,7 +246,7 @@
 								<text class="info-value">{{ item.checkout }}</text>
 							</view>
 						</view>
-						<button class="btn btn-primary full-width" @tap="doReservedCheckin(item)">办理入住</button>
+						<button v-if="can('checkin:handle')" class="btn btn-primary full-width" @tap="doReservedCheckin(item)">办理入住</button>
 					</view>
 				</view>
 			</view>
@@ -378,23 +378,8 @@ export default {
 		},
 		handleNavigate(page) {
 			this.currentPage = page
-			const pageNames = {
-				'index': '仪表盘',
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'billing': '账单管理',
-				'housekeeping': '客房清洁',
-				'shift': '交接班管理',
-				'guest-history': '客户档案',
-				'reports': '报表统计',
-				'system': '系统设置'
-			}
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		onRoomTypeChange(e) {
 			const selected = this.roomTypeOptions[e.detail.value]
@@ -490,6 +475,10 @@ export default {
 			this.formData.price = selected.price || this.formData.price
 		},
 		async submitCheckin() {
+			if (!this.can('checkin:handle')) {
+				this.showNoPermission()
+				return
+			}
 			if (!this.formData.name || !this.formData.phone || !this.formData.roomNumber || !this.formData.checkout) {
 				this.showToast('请填写完整入住信息')
 				return
@@ -513,6 +502,10 @@ export default {
 			}
 		},
 		async doReservedCheckin(item) {
+			if (!this.can('checkin:handle')) {
+				this.showNoPermission()
+				return
+			}
 			try {
 				await this.$api.post('/api/checkin', { reservationId: item.id })
 				this.showToast('预订入住成功')

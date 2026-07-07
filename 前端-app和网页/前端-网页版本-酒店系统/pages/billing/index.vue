@@ -7,7 +7,7 @@
 				<view class="page-container">
 					<view class="search-bar">
 						<input type="text" placeholder="搜索房号/客人姓名" v-model="searchKeyword" />
-						<button class="btn btn-primary btn-sm" @tap="showChargeModal">+ 新增消费</button>
+						<button v-if="can('billing:edit')" class="btn btn-primary btn-sm" @tap="showChargeModal">+ 新增消费</button>
 					</view>
 					
 					<view class="grid-2">
@@ -87,8 +87,8 @@
 										<td>{{ item.time }}</td>
 										<td><span class="status-badge" :class="item.paid ? 'status-vacant' : 'status-dirty'">{{ item.paid ? '已结算' : '未结算' }}</span></td>
 										<td>
-											<text class="action-link" @tap="settleBill(item)" v-if="!item.paid">结算</text>
-											<text class="action-link" @tap="printBill(item)">打印</text>
+											<text class="action-link" @tap="settleBill(item)" v-if="!item.paid && can('payment:confirm')">结算</text>
+											<text v-if="can('billing:view')" class="action-link" @tap="printBill(item)">打印</text>
 										</td>
 									</tr>
 								</tbody>
@@ -129,7 +129,12 @@
 						</view>
 						<view class="bill-footer">
 							<text class="bill-time">{{ item.time }}</text>
-							<button class="btn btn-sm" :class="item.paid ? 'btn-default' : 'btn-primary'" @tap="settleBill(item)">
+							<button
+								v-if="item.paid ? can('billing:view') : can('payment:confirm')"
+								class="btn btn-sm"
+								:class="item.paid ? 'btn-default' : 'btn-primary'"
+								@tap="settleBill(item)"
+							>
 								{{ item.paid ? '查看' : '结算' }}
 							</button>
 						</view>
@@ -173,7 +178,7 @@
 				</view>
 				<view class="modal-footer">
 					<button class="btn btn-default" @tap="closeModal">取消</button>
-					<button class="btn btn-primary" @tap="saveCharge">确认</button>
+					<button v-if="can('billing:edit')" class="btn btn-primary" @tap="saveCharge">确认</button>
 				</view>
 			</view>
 		</view>
@@ -285,17 +290,18 @@ export default {
 		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
-		showChargeModal() { this.chargeData = {}; this.showModal = true },
+		showChargeModal() {
+			if (!this.can('billing:edit')) {
+				this.showNoPermission()
+				return
+			}
+			this.chargeData = {}
+			this.showModal = true
+		},
 		closeModal() { this.showModal = false },
-		onRoomChange(e) { this.chargeData.roomLabel = this.roomOptions[e.detail.value].label },
-		onTypeChange(e) { this.chargeData.type = this.chargeTypes[e.detail.value] },
-		saveCharge() { this.showToast('消费记录已添加'); this.closeModal() },
-		settleBill(item) { this.showToast('账单已结算') },
-		printBill(item) { this.showToast('正在打印...') },
 		onRoomChange(e) {
 			const selected = this.roomOptions[e.detail.value]
 			this.chargeData.roomLabel = selected.label
@@ -303,6 +309,10 @@ export default {
 		},
 		onTypeChange(e) { this.chargeData.type = this.chargeTypes[e.detail.value] },
 		async saveCharge() {
+			if (!this.can('billing:edit')) {
+				this.showNoPermission()
+				return
+			}
 			if (!this.chargeData.billId || !this.chargeData.item || !this.chargeData.amount) {
 				this.showToast('请填写完整消费信息')
 				return
@@ -322,7 +332,28 @@ export default {
 				this.showToast(error.message || '消费入账失败')
 			}
 		},
-		settleBill(item) { this.showToast(item.paid ? '账单已结清' : '请在退房结算页办理收款') },
+		settleBill(item) {
+			if (!item.paid && !this.can('payment:confirm')) {
+				this.showNoPermission()
+				return
+			}
+			if (item.paid) {
+				this.showToast('账单已结清')
+				return
+			}
+			if (!item.room) {
+				this.showToast('未找到对应在住房间，无法办理退房结算')
+				return
+			}
+			this.navigateToPage('checkout', { roomNo: item.room })
+		},
+		printBill(item) {
+			if (!this.can('billing:view')) {
+				this.showNoPermission()
+				return
+			}
+			this.showToast('正在打印...')
+		},
 		showToast(message) { this.toastMessage = message; this.toastShow = true; setTimeout(() => { this.toastShow = false }, 2000) }
 	}
 }

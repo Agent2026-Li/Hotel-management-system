@@ -176,21 +176,14 @@
 				<view class="quick-entry">
 					<view class="quick-title">快捷操作</view>
 					<view class="quick-grid">
-						<view class="quick-item" @tap="goToPage('checkin')">
-							<text class="quick-icon">🔑</text>
-							<text class="quick-text">入住登记</text>
-						</view>
-						<view class="quick-item" @tap="goToPage('checkout')">
-							<text class="quick-icon">💳</text>
-							<text class="quick-text">退房结算</text>
-						</view>
-						<view class="quick-item" @tap="goToPage('reservation')">
-							<text class="quick-icon">📝</text>
-							<text class="quick-text">预订房间</text>
-						</view>
-						<view class="quick-item" @tap="goToPage('housekeeping')">
-							<text class="quick-icon">🧹</text>
-							<text class="quick-text">客房清洁</text>
+						<view
+							v-for="item in visibleQuickActions"
+							:key="item.page"
+							class="quick-item"
+							@tap="goToPage(item.page)"
+						>
+							<text class="quick-icon">{{ item.icon }}</text>
+							<text class="quick-text">{{ item.text }}</text>
 						</view>
 					</view>
 				</view>
@@ -276,6 +269,16 @@ export default {
 			]
 		}
 	},
+	computed: {
+		visibleQuickActions() {
+			return [
+				{ page: 'checkin', icon: '🔑', text: '入住登记' },
+				{ page: 'checkout', icon: '💳', text: '退房结算' },
+				{ page: 'reservation', icon: '📝', text: '预订房间' },
+				{ page: 'housekeeping', icon: '🧹', text: '客房清洁' }
+			].filter(item => this.canAccessPage(item.page))
+		}
+	},
 	onLoad() {
 		// 检测设备类型
 		uni.getSystemInfo({
@@ -289,11 +292,11 @@ export default {
 		async loadDashboard() {
 			try {
 				const [rooms, occupancy, revenue, bills, tasks] = await Promise.all([
-					this.$api.get('/api/rooms'),
-					this.$api.get('/api/reports/occupancy'),
-					this.$api.get('/api/reports/revenue'),
-					this.$api.get('/api/bills'),
-					this.$api.get('/api/housekeeping/tasks')
+					this.can('room:view') ? this.$api.get('/api/rooms') : Promise.resolve([]),
+					this.can('reports:view') ? this.$api.get('/api/reports/occupancy') : Promise.resolve(null),
+					this.can('reports:view') ? this.$api.get('/api/reports/revenue') : Promise.resolve(null),
+					this.can('billing:view') ? this.$api.get('/api/bills') : Promise.resolve([]),
+					this.can('housekeeping:view') ? this.$api.get('/api/housekeeping/tasks') : Promise.resolve([])
 				])
 				const roomList = Array.isArray(rooms) ? rooms : []
 				const report = this.normalizeOccupancy(occupancy, roomList)
@@ -321,7 +324,7 @@ export default {
 					desc: task.remark || task.statusName,
 					time: task.createdAt || ''
 				}))
-				if (!this.todoList.length) {
+				if (!this.todoList.length && this.can('billing:view')) {
 					this.todoList = (bills || []).slice(0, 4).map(bill => ({
 						icon: '💳',
 						title: `${bill.roomNumber} 账单`,
@@ -375,35 +378,11 @@ export default {
 		},
 		handleNavigate(page) {
 			this.currentPage = page
-			const pageNames = {
-				'index': '仪表盘',
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'billing': '账单管理',
-				'housekeeping': '客房清洁',
-				'shift': '交接班管理',
-				'guest-history': '客户档案',
-				'reports': '报表统计',
-				'system': '系统设置'
-			}
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
 		},
 		goToPage(page) {
-			const pageNames = {
-				'room-status': '房态管理',
-				'reservation': '预订管理',
-				'checkin': '入住登记',
-				'checkout': '退房结算',
-				'housekeeping': '客房清洁'
-			}
-			uni.navigateTo({
-				url: `/pages/${page}/index`
-			})
+			this.navigateToPage(page)
 		},
 		handleTodo(item) {
 			this.showToast(item.title)

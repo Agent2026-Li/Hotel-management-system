@@ -13,6 +13,9 @@
             <if test="roomNumber != null and roomNumber != ''">
                 and room_number = #{roomNumber}
             </if>
+            <if test="assignedTo != null and assignedTo != ''">
+                and assigned_to = #{assignedTo}
+            </if>
         </where>
         order by id
     </select>

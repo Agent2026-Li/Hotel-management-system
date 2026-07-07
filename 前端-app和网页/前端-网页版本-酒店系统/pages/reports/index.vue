@@ -5,6 +5,9 @@
 			<view class="main-content" :class="{ 'sidebar-collapsed': isSidebarCollapsed }">
 				<Topbar :pageName="pageName" @toggleSidebar="toggleSidebar" />
 				<view class="page-container">
+					<view class="report-toolbar" v-if="can('reports:export')">
+						<button class="btn btn-default btn-sm" @tap="exportReport">导出报表</button>
+					</view>
 					<view class="stats-grid">
 						<view class="stat-card">
 							<view class="stat-icon blue">💰</view>
@@ -131,6 +134,7 @@
 						<text class="rank-percent">{{ item.percent }}%</text>
 					</view>
 				</view>
+				<button v-if="can('reports:export')" class="btn btn-default full export-mobile" @tap="exportReport">导出报表</button>
 			</view>
 		</view>
 	</view>
@@ -193,7 +197,7 @@ export default {
 			try {
 				const occupancy = await this.$api.get('/api/reports/occupancy')
 				const revenue = await this.$api.get('/api/reports/revenue')
-				const rooms = await this.$api.get('/api/rooms')
+				const rooms = this.can('room:view') ? await this.$api.get('/api/rooms') : []
 				this.stats = {
 					totalRevenue: revenue.totalRevenue,
 					avgOccupancy: Number(occupancy.occupancyRate || 0),
@@ -229,9 +233,18 @@ export default {
 		},
 		toggleSidebar() { this.isSidebarCollapsed = !this.isSidebarCollapsed },
 		handleNavigate(page) {
-			const pageNames = { 'index': '仪表盘', 'room-status': '房态管理', 'reservation': '预订管理', 'checkin': '入住登记', 'checkout': '退房结算', 'billing': '账单管理', 'housekeeping': '客房清洁', 'shift': '交接班管理', 'guest-history': '客户档案', 'reports': '报表统计', 'system': '系统设置' }
-			this.pageName = pageNames[page] || page
-			uni.navigateTo({ url: `/pages/${page}/index` })
+			this.pageName = this.$rbac.getPageName(page)
+			this.navigateToPage(page)
+		},
+		exportReport() {
+			if (!this.can('reports:export')) {
+				this.showNoPermission()
+				return
+			}
+			uni.showToast({
+				title: '财务报表已导出',
+				icon: 'none'
+			})
 		}
 	}
 }
@@ -243,6 +256,7 @@ export default {
 .main-content { flex: 1; margin-left: 220px; transition: margin-left 0.3s; }
 .main-content.sidebar-collapsed { margin-left: 64px; }
 .page-container { padding: 24px; }
+.report-toolbar { display: flex; justify-content: flex-end; margin-bottom: 16px; }
 .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 24px; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-bottom: 20px; }
 .chart-placeholder { display: flex; justify-content: space-around; align-items: flex-end; height: 250px; padding: 20px 0; }
@@ -258,6 +272,8 @@ export default {
 .mobile-header { height: 88rpx; background: linear-gradient(135deg, #001529 0%, #002140 100%); color: #fff; display: flex; align-items: center; justify-content: center; }
 .mobile-title { font-size: 32rpx; font-weight: 600; }
 .mobile-content { padding: 24rpx; }
+.full { width: 100%; }
+.export-mobile { margin-top: 24rpx; }
 .mobile-stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16rpx; margin-bottom: 24rpx; }
 .m-stat-card { background: #fff; border-radius: 12rpx; padding: 24rpx; text-align: center; }
 .m-stat-value { display: block; font-size: 32rpx; font-weight: 700; color: #1677ff; }
